@@ -1,4 +1,4 @@
-import { apiClient } from './api';
+import { apiClient as api } from './api';
 
 export interface LoginResponse {
   accessToken: string;
@@ -6,12 +6,14 @@ export interface LoginResponse {
   username: string;
   fullName: string;
   roles: string[];
+  tokenVersion: number;
 }
 
 export const authService = {
-  login: (credentials: any) => 
-    apiClient.post<any, LoginResponse>('/auth/login', credentials),
-    
+  login: async (credentials: any, signal?: AbortSignal): Promise<LoginResponse> => {
+    return api.post('/auth/login', credentials, { signal });
+  },
+
   logout: () => {
     localStorage.removeItem('euni_access_token');
     localStorage.removeItem('euni_refresh_token');

@@ -6,7 +6,7 @@ import { departmentService, Department } from '@/services/departmentService';
 export function useDepartments() {
   const { data: departments = [], isLoading, error } = useQuery({
     queryKey: ['departments'],
-    queryFn: () => departmentService.getAll(),
+    queryFn: ({ signal }) => departmentService.getAll(signal),
   });
 
   return {

@@ -1,4 +1,4 @@
-import { apiClient } from './api';
+import { apiClient as api } from './api';
 
 export interface User {
   id: string;
@@ -13,19 +13,31 @@ export interface User {
 }
 
 export const userService = {
-  getAll: () => apiClient.get<any, User[]>('/users'),
-  
-  getById: (id: string) => apiClient.get<any, User>(`/users/${id}`),
-  
-  delete: (id: string) => apiClient.delete(`/users/${id}`),
-  
-  updateStatus: (id: string, status: string) => 
-    apiClient.patch(`/users/${id}/status`, null, { params: { status } }),
-    
-  create: (user: Partial<User>) => apiClient.post<any, User>('/users', user),
-  
-  update: (id: string, user: Partial<User>) => apiClient.put<any, User>(`/users/${id}`, user),
-    
-  resetPassword: (id: string) => 
-    apiClient.put<{ tempPassword: string }>(`/users/${id}/reset-password`),
+  getAll: async (signal?: AbortSignal): Promise<User[]> => {
+    return api.get('/users', { signal });
+  },
+
+  getById: async (id: string, signal?: AbortSignal): Promise<User> => {
+    return api.get(`/users/${id}`, { signal });
+  },
+
+  delete: async (id: string): Promise<void> => {
+    return api.delete(`/users/${id}`);
+  },
+
+  updateStatus: async (id: string, status: string): Promise<void> => {
+    return api.patch(`/users/${id}/status`, null, { params: { status } });
+  },
+
+  create: async (user: Partial<User>): Promise<User> => {
+    return api.post('/users', user);
+  },
+
+  update: async (id: string, user: Partial<User>): Promise<User> => {
+    return api.put(`/users/${id}`, user);
+  },
+
+  resetPassword: async (id: string): Promise<{ tempPassword: string }> => {
+    return api.put(`/users/${id}/reset-password`);
+  },
 };

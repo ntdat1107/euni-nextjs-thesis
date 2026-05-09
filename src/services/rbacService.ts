@@ -1,4 +1,4 @@
-import { apiClient } from './api';
+import { apiClient as api } from './api';
 
 export interface Permission {
   id: string;
@@ -15,15 +15,31 @@ export interface Role {
 }
 
 export const rbacService = {
-  getPermissions: () => apiClient.get<any, Permission[]>('/rbac/permissions'),
-  createPermission: (permission: Partial<Permission>) => 
-    apiClient.post<any, Permission>('/rbac/permissions', permission),
-  deletePermission: (id: string) => apiClient.delete(`/rbac/permissions/${id}`),
-  
-  getRoles: () => apiClient.get<any, Role[]>('/rbac/roles'),
-  createRole: (role: Partial<Role>) => apiClient.post<any, Role>('/rbac/roles', role),
-  deleteRole: (id: string) => apiClient.delete(`/rbac/roles/${id}`),
-  
-  updateRolePermissions: (roleId: string, permissionIds: string[]) => 
-    apiClient.put(`/rbac/roles/${roleId}/permissions`, { permissionIds }),
+  getPermissions: async (signal?: AbortSignal): Promise<Permission[]> => {
+    return api.get('/rbac/permissions', { signal });
+  },
+
+  createPermission: async (permission: Partial<Permission>): Promise<Permission> => {
+    return api.post('/rbac/permissions', permission);
+  },
+
+  deletePermission: async (id: string): Promise<void> => {
+    return api.delete(`/rbac/permissions/${id}`);
+  },
+
+  getRoles: async (signal?: AbortSignal): Promise<Role[]> => {
+    return api.get('/rbac/roles', { signal });
+  },
+
+  createRole: async (role: Partial<Role>): Promise<Role> => {
+    return api.post('/rbac/roles', role);
+  },
+
+  deleteRole: async (id: string): Promise<void> => {
+    return api.delete(`/rbac/roles/${id}`);
+  },
+
+  updateRolePermissions: async (roleId: string, permissionIds: string[]): Promise<void> => {
+    return api.put(`/rbac/roles/${roleId}/permissions`, { permissionIds });
+  },
 };

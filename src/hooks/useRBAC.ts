@@ -10,12 +10,12 @@ export function useRBAC() {
 
   const { data: permissions = [], isLoading: loadingPermissions } = useQuery({
     queryKey: ['permissions'],
-    queryFn: () => rbacService.getPermissions(),
+    queryFn: ({ signal }) => rbacService.getPermissions(signal),
   });
 
   const { data: roles = [], isLoading: loadingRoles } = useQuery({
     queryKey: ['roles'],
-    queryFn: () => rbacService.getRoles(),
+    queryFn: ({ signal }) => rbacService.getRoles(signal),
   });
 
   const createRoleMutation = useMutation({

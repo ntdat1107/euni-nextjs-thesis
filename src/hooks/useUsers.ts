@@ -10,7 +10,7 @@ export function useUsers() {
 
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ['users'],
-    queryFn: () => userService.getAll(),
+    queryFn: ({ signal }) => userService.getAll(signal),
   });
 
   const deleteUserMutation = useMutation({

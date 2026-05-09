@@ -102,3 +102,13 @@
 .slide-in-from-right-4 {
   animation: slideInRight 0.5s ease-out;
 }
+
+@keyframes progress-fast {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(-30%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-progress-fast {
+  animation: progress-fast 1s infinite linear;
+}

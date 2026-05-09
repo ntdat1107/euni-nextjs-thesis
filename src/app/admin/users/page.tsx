@@ -55,10 +55,6 @@ function UserManagementContent() {
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
-  if (isLoading) {
-    return <TableSkeleton rows={10} columns={5} />;
-  }
-
   // Statistics
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.status === 'Active').length;
@@ -162,7 +158,18 @@ function UserManagementContent() {
     }
   };
 
-  const columns = [
+  // Optimize lookups using Maps (O(1) instead of O(n) .find) - MUST be before columns
+  const deptMap = React.useMemo(() => 
+    new Map(departments.map(d => [d.code, d.name])),
+    [departments]
+  );
+  
+  const roleMap = React.useMemo(() => 
+    new Map(roles.map(r => [r.code, r.name])),
+    [roles]
+  );
+
+  const columns = React.useMemo(() => [
     {
       title: 'Người dùng',
       key: 'user',
@@ -190,8 +197,8 @@ function UserManagementContent() {
       dataIndex: 'department',
       key: 'department',
       render: (code: string) => {
-        const dept = departments.find(d => d.code === code);
-        return <span className="font-medium text-slate-600">{dept ? dept.name : code}</span>;
+        const name = deptMap.get(code);
+        return <span className="font-medium text-slate-600">{name || code}</span>;
       }
     },
     {
@@ -202,7 +209,7 @@ function UserManagementContent() {
         <Space wrap>
           {userRoles.map(role => (
             <Tag key={role} color={role === 'ADMIN' ? 'volcano' : 'blue'} className="rounded-lg font-bold border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider">
-              {roles.find(r => r.code === role)?.name || role}
+              {roleMap.get(role) || role}
             </Tag>
           ))}
         </Space>
@@ -248,7 +255,11 @@ function UserManagementContent() {
         </Space>
       ),
     },
-  ];
+  ], [departments, roles, deptMap, roleMap]);
+
+  if (isLoading) {
+    return <TableSkeleton rows={10} columns={5} />;
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -357,6 +368,7 @@ function UserManagementContent() {
         cancelText="Hủy"
         className="premium-modal"
         centered
+        forceRender={true}
       >
         <div className="py-6">
           <Form form={createForm} layout="vertical" onFinish={handleCreateUser} requiredMark="optional">
@@ -454,6 +466,7 @@ function UserManagementContent() {
         cancelText="Hủy"
         className="premium-modal"
         centered
+        forceRender={true}
       >
         <div className="py-6">
           <Form form={editForm} layout="vertical" onFinish={handleUpdateUser} requiredMark="optional">

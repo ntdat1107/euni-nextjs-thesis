@@ -21,6 +21,12 @@ import {
 import { cn } from '@/lib/utils';
 import { Button, Avatar } from 'antd';
 
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+  onNavigate?: (href: string) => void;
+}
+
 interface NavItemProps {
   id: string;
   label: string;
@@ -84,11 +90,9 @@ const NAV_ITEMS: NavItemProps[] = [
 
 export default function Sidebar({ 
   collapsed, 
-  onToggle 
-}: { 
-  collapsed: boolean; 
-  onToggle: () => void 
-}) {
+  onToggle,
+  onNavigate
+}: SidebarProps) {
   const pathname = usePathname();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [isClient, setIsClient] = useState(false);
@@ -135,19 +139,20 @@ export default function Sidebar({
     });
   }, [pathname]);
 
-  const isActive = (path?: string) => {
-    if (!path || !pathname) return false;
-    
-    // Exact path normalization
-    const normalizedPath = path === '/' ? '/' : path.replace(/\/$/, '');
-    const normalizedPathname = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
+  // Memoize active path check to avoid redundant string operations during render
+  const activePath = React.useMemo(() => {
+    if (!pathname) return '';
+    return pathname === '/' ? '/' : pathname.replace(/\/$/, '');
+  }, [pathname]);
 
-    // Dashboard (root) check - strictly equal
-    if (normalizedPath === '/') return normalizedPathname === '/';
+  const isActive = React.useCallback((path?: string) => {
+    if (!path || !activePath) return false;
     
-    // Other items: exact match OR starts with path + /
-    return normalizedPathname === normalizedPath || normalizedPathname.startsWith(normalizedPath + '/');
-  };
+    const normalizedPath = path === '/' ? '/' : path.replace(/\/$/, '');
+
+    if (normalizedPath === '/') return activePath === '/';
+    return activePath === normalizedPath || activePath.startsWith(normalizedPath + '/');
+  }, [activePath]);
 
 
   const handleLogout = () => {
@@ -222,6 +227,8 @@ export default function Sidebar({
                         <li key={child.id} className="relative">
                           <Link
                             href={child.path || '#'}
+                            prefetch={false}
+                            onMouseDown={() => child.path && onNavigate?.(child.path)}
                             className={cn(
                               'block pl-11 pr-4 py-2 rounded-lg text-sm transition-all duration-200',
                               isActive(child.path)
@@ -242,6 +249,8 @@ export default function Sidebar({
               ) : (
                   <Link
                     href={item.path || '#'}
+                    prefetch={false}
+                    onMouseDown={() => item.path && onNavigate?.(item.path)}
                     className={cn(
                       'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
                       isActive(item.path)
@@ -272,6 +281,8 @@ export default function Sidebar({
       <div className="border-t border-slate-200 bg-white px-3 py-4 flex-shrink-0 space-y-2">
         <Link
           href="/settings"
+          prefetch={false}
+          onMouseDown={() => onNavigate?.('/settings')}
           className={cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
             isActive('/settings')

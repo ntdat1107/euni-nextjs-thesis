@@ -15,7 +15,10 @@ import {
   Space, 
   Typography,
   App,
-  Select
+  Select,
+  Row,
+  Col,
+  Statistic
 } from 'antd';
 import { 
   ShieldCheck, 
@@ -59,10 +62,6 @@ function RBACContent() {
 
   const isLoading = loadingRBAC || loadingUsers;
 
-  if (isLoading) {
-    return <TableSkeleton rows={8} columns={6} />;
-  }
-
   const openUserEdit = (user: User) => {
     setEditingUser(user);
     setSelectedRoles(user.roles);
@@ -75,8 +74,8 @@ function RBACContent() {
     }
   };
 
-  // --- Permission Matrix Logic ---
-  const matrixColumns = [
+  // --- Permission Matrix Logic (Memoized for performance) ---
+  const matrixColumns = React.useMemo(() => [
     {
       title: 'Vai trò (Roles)',
       dataIndex: 'name',
@@ -115,7 +114,11 @@ function RBACContent() {
         );
       },
     })),
-  ];
+  ], [permissions, updateRolePermissions]);
+
+  if (isLoading) {
+    return <TableSkeleton rows={8} columns={6} />;
+  }
 
   const handleAddPerm = (values: any) => {
     addPermission(values);
@@ -411,6 +414,7 @@ function RBACContent() {
         open={isPermModalOpen}
         onCancel={() => setIsPermModalOpen(false)}
         onOk={() => form.submit()}
+        forceRender={true}
       >
         <Form form={form} layout="vertical" onFinish={handleAddPerm}>
           <Form.Item name="name" label="Tên quyền" rules={[{ required: true }]}>
@@ -430,6 +434,7 @@ function RBACContent() {
         open={isRoleModalOpen}
         onCancel={() => setIsRoleModalOpen(false)}
         onOk={() => form.submit()}
+        forceRender={true}
       >
         <Form form={form} layout="vertical" onFinish={handleAddRole}>
           <Form.Item name="name" label="Tên vai trò" rules={[{ required: true }]}>
@@ -445,16 +450,60 @@ function RBACContent() {
 }
 
 export default function RBACPage() {
+  const { permissions = [], roles = [] } = useRBAC();
+  const { users = [] } = useUsers();
+
   return (
     <AppShell>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <Title level={2} className="!mb-1">Quản Trị Phân Quyền</Title>
-            <Text type="secondary">Quản lý ma trận gán quyền cho vai trò và phân quyền người dùng.</Text>
+            <Title level={2} className="!mb-1 font-display tracking-tight">Quản Trị Phân Quyền</Title>
+            <Text className="text-slate-500 font-medium">Hệ thống quản lý ma trận gán quyền và phân vai trò người dùng tập trung.</Text>
           </div>
-          <Button type="primary" icon={<Save className="w-4 h-4" />}>Lưu Thay Đổi</Button>
+          <Button 
+            type="primary" 
+            icon={<Save className="w-5 h-5" />}
+            className="h-11 px-6 shadow-lg shadow-brand-100 btn-hover-effect"
+          >
+            Lưu Thay Đổi
+          </Button>
         </div>
+
+        {/* Stats */}
+        <Row gutter={[24, 24]}>
+          <Col xs={24} sm={8}>
+            <Card className="card-premium">
+              <Statistic 
+                title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Tổng số vai trò</span>}
+                value={roles.length} 
+                formatter={(val) => <span className="font-outfit font-extrabold">{val}</span>}
+                styles={{ content: { color: '#0f172a' } }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card className="card-premium">
+              <Statistic 
+                title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Quyền hạn hệ thống</span>}
+                value={permissions.length} 
+                formatter={(val) => <span className="font-outfit font-extrabold">{val}</span>}
+                styles={{ content: { color: '#3b82f6' } }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card className="card-premium">
+              <Statistic 
+                title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Tài khoản đã gán</span>}
+                value={users.filter(u => u.roles.length > 0).length} 
+                formatter={(val) => <span className="font-outfit font-extrabold">{val}</span>}
+                styles={{ content: { color: '#059669' } }}
+              />
+            </Card>
+          </Col>
+        </Row>
 
         <RBACContent />
       </div>

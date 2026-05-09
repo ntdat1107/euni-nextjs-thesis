@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { cn, isTokenExpired } from '@/lib/utils';
@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
+import MainLoading from '../ui/MainLoading';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { message } = App.useApp();
@@ -18,6 +19,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // --- Instant Navigation Feedback ---
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname, searchParams]);
+
+  const handleNavigation = useCallback((href: string) => {
+    if (href !== pathname) {
+      setIsNavigating(true);
+      // Safety timeout to prevent getting stuck if navigation fails
+      setTimeout(() => setIsNavigating(false), 5000);
+    }
+  }, [pathname]);
 
   useEffect(() => {
     const token = localStorage.getItem('euni_access_token');
@@ -78,9 +93,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
+      {/* Instant Progress Bar */}
+      {isNavigating && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-brand-100 overflow-hidden">
+          <div className="h-full bg-brand-600 animate-progress-fast shadow-[0_0_10px_rgba(37,99,235,0.5)]" />
+        </div>
+      )}
+
       <Sidebar 
         collapsed={sidebarCollapsed} 
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
+        onNavigate={handleNavigation}
       />
 
       <div
@@ -93,7 +116,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Topbar />
         </header>
 
-        <main className="p-8 flex-1 overflow-x-hidden">
+        <main className="p-8 flex-1 overflow-x-hidden relative">
+          <MainLoading />
           <div className="max-w-[1600px] mx-auto h-full">
             {isAuthenticated === true ? (
               children
