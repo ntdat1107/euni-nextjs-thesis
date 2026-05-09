@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import StyledComponentsRegistry from "@/lib/antd-registry";
 import QueryProvider from "@/providers/query-provider";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, App } from "antd";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  variable: "--font-outfit",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -21,32 +28,60 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+    <html lang="vi" className={`${inter.variable} ${outfit.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-full flex flex-col bg-[#f8fafc]" suppressHydrationWarning>
         <StyledComponentsRegistry>
           <ConfigProvider
             theme={{
               token: {
-                colorPrimary: "#16559d", // brand-600
-                borderRadius: 8,
+                colorPrimary: "#2563eb", 
+                borderRadius: 12,
                 fontFamily: "var(--font-inter)",
+                colorBgContainer: "#ffffff",
+                colorTextBase: "#1e293b",
+                wireframe: false,
               },
               components: {
                 Button: {
-                  controlHeight: 40,
-                  borderRadius: 8,
+                  controlHeight: 44,
+                  borderRadius: 12,
+                  fontWeight: 600,
+                  boxShadow: 'none',
                 },
                 Input: {
-                  controlHeight: 40,
+                  controlHeight: 44,
+                  borderRadius: 12,
                 },
                 Select: {
-                  controlHeight: 40,
+                  controlHeight: 44,
+                  borderRadius: 12,
                 },
+                Card: {
+                  borderRadiusLG: 16,
+                  boxShadowTertiary: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+                },
+                Table: {
+                  borderRadius: 12,
+                  headerBg: '#f8fafc',
+                  headerColor: '#64748b',
+                  headerBorderRadius: 12,
+                },
+                Tabs: {
+                  itemSelectedColor: '#2563eb',
+                  inkBarColor: '#2563eb',
+                  titleFontSize: 16,
+                },
+                Statistic: {
+                  contentFontSize: 28,
+                  titleFontSize: 14,
+                }
               },
             }}
           >
             <QueryProvider>
-              {children}
+              <App>
+                {children}
+              </App>
             </QueryProvider>
           </ConfigProvider>
         </StyledComponentsRegistry>
