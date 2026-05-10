@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { userService, User } from '@/services/userService';
+import { userService, type User } from '@/services/userService';
+export type { User };
 import { apiClient } from '@/services/api';
 import { message } from 'antd';
 

@@ -29,7 +29,7 @@ const handleLogout = () => {
     localStorage.removeItem('euni_access_token');
     localStorage.removeItem('euni_refresh_token');
     localStorage.removeItem('euni_user');
-    
+
     if (!window.location.pathname.includes('/login')) {
       const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?session=expired&redirect=${redirectUrl}`;
@@ -79,7 +79,7 @@ apiClient.interceptors.response.use(
 
     // Handle 401 Unauthorized (Expired token or Invalid token)
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      
+
       // If it's the refresh token endpoint itself that failed, logout
       if (originalRequest.url?.includes('/auth/refresh-token')) {
         handleLogout();
@@ -104,7 +104,7 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
-      
+
       try {
         const refreshToken = localStorage.getItem('euni_refresh_token');
         if (!refreshToken) {
@@ -115,16 +115,16 @@ apiClient.interceptors.response.use(
         // Fix: Use API_BASE_URL which already includes /api, or just /auth/refresh-token
         // AuthController is at /api/auth/refresh-token
         const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
-        
+
         const responseData = res.data;
         if (responseData && responseData.success) {
           const { accessToken, refreshToken: newRefreshToken, tokenVersion } = responseData.data;
-          
+
           localStorage.setItem('euni_access_token', accessToken);
           if (newRefreshToken) {
             localStorage.setItem('euni_refresh_token', newRefreshToken);
           }
-          
+
           // Update tokenVersion in user object to avoid mismatch
           const userStr = localStorage.getItem('euni_user');
           if (userStr && tokenVersion !== undefined) {
@@ -136,7 +136,7 @@ apiClient.interceptors.response.use(
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           }
-          
+
           onRefreshed(accessToken);
           return apiClient(originalRequest);
         } else {
@@ -156,7 +156,7 @@ apiClient.interceptors.response.use(
       if (typeof window !== 'undefined') {
         const data = error.response.data as any;
         const msg = data?.message || 'Bạn không có quyền thực hiện hành động này.';
-        
+
         Modal.error({
           title: 'Truy cập bị từ chối',
           content: msg,
@@ -165,7 +165,7 @@ apiClient.interceptors.response.use(
             window.location.href = '/';
           }
         });
-        
+
         if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
           setTimeout(() => {
             if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
