@@ -5,18 +5,47 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { cn, isTokenExpired } from '@/lib/utils';
 import { Alert, Button, App } from 'antd';
-import Link from 'next/link';
-import { ShieldAlert } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import MainLoading from '../ui/MainLoading';
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+// Separated component to use useSearchParams within Suspense
+function SearchParamsHandler({ 
+  isAuthenticated, 
+  onNavigateEnd 
+}: { 
+  isAuthenticated: boolean | null; 
+  onNavigateEnd: () => void;
+}) {
+  const searchParams = useSearchParams();
   const { message } = App.useApp();
+
+  useEffect(() => {
+    if (isAuthenticated && searchParams.get('login') === 'success') {
+      const userData = localStorage.getItem('euni_user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        message.success(`Chào mừng trở lại, ${user.fullName}!`);
+        
+        // Clear the param
+        const newUrl = window.location.pathname + window.location.search.replace(/[?&]login=success/, '').replace(/^&/, '?');
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [isAuthenticated, searchParams, message]);
+
+  // Handle navigation feedback
+  useEffect(() => {
+    onNavigateEnd();
+  }, [searchParams, onNavigateEnd]);
+
+  return null;
+}
+
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -24,7 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // --- Instant Navigation Feedback ---
   useEffect(() => {
     setIsNavigating(false);
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   const handleNavigation = useCallback((href: string) => {
     if (href !== pathname) {
@@ -34,20 +63,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname]);
 
+  const onNavigateEnd = useCallback(() => {
+    setIsNavigating(false);
+  }, []);
+
   useEffect(() => {
     const checkAuth = () => {
       const token = localStorage.getItem('euni_access_token');
       const refreshToken = localStorage.getItem('euni_refresh_token');
       const userData = localStorage.getItem('euni_user');
 
-      // Nếu không có userData hoặc cả 2 token đều không có, chắc chắn là chưa login
       if (!userData || (!token && !refreshToken)) {
         return false;
       }
 
-      // Nếu có refresh token nhưng mất access token hoặc access token hết hạn
-      // Chúng ta vẫn cho là "authenticated" để render UI, 
-      // và để axios interceptor thực hiện silent refresh khi có request API đầu tiên.
       if (refreshToken && (!token || isTokenExpired(token))) {
         return true;
       }
@@ -78,20 +107,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, pathname, router]);
 
-  useEffect(() => {
-    if (isAuthenticated && searchParams.get('login') === 'success') {
-      const userData = localStorage.getItem('euni_user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        message.success(`Chào mừng trở lại, ${user.fullName}!`);
-        
-        // Clear the param
-        const newUrl = window.location.pathname + window.location.search.replace(/[?&]login=success/, '').replace(/^&/, '?');
-        window.history.replaceState({}, '', newUrl);
-      }
-    }
-  }, [isAuthenticated, searchParams, message]);
-
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Instant Progress Bar */}
@@ -113,6 +128,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           sidebarCollapsed ? 'ml-[80px]' : 'ml-[280px]'
         )}
       >
+        <React.Suspense fallback={null}>
+          <SearchParamsHandler isAuthenticated={isAuthenticated} onNavigateEnd={onNavigateEnd} />
+        </React.Suspense>
+        
         <header className="sticky top-0 z-40 bg-white border-b border-slate-200 h-16 flex items-center px-8 flex-shrink-0">
           <Topbar />
         </header>

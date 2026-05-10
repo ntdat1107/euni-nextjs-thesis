@@ -14,7 +14,7 @@ import {
   App
 } from 'antd';
 import {
-  User,
+  User as UserIcon,
   Lock,
   Mail,
   Phone,
@@ -23,7 +23,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { useUsers, useProfile } from '@/hooks/useUsers';
+import { useUsers, useProfile, type User } from '@/hooks/useUsers';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -169,7 +169,7 @@ function SettingsContent() {
               key: 'profile',
               label: (
                 <div className="flex items-center gap-3 px-6 py-4">
-                  <User className="w-5 h-5" />
+                  <UserIcon className="w-5 h-5" />
                   <span className="font-bold tracking-tight">Thông tin cá nhân</span>
                 </div>
               ),
@@ -182,7 +182,7 @@ function SettingsContent() {
                         <Text className="text-[11px] uppercase font-bold tracking-wider text-slate-400 block mb-2 group-hover:text-brand-500 transition-colors">Họ và tên</Text>
                         <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 group-hover:bg-white group-hover:border-brand-100 group-hover:shadow-sm transition-all">
                           <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                            <User className="w-5 h-5 text-brand-600" />
+                            <UserIcon className="w-5 h-5 text-brand-600" />
                           </div>
                           <span className="font-bold text-slate-900">{currentUser?.fullName}</span>
                         </div>

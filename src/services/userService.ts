@@ -10,6 +10,7 @@ export interface User {
   phone: string;
   roles: string[];
   status: string;
+  tokenVersion?: number;
 }
 
 export const userService = {
