@@ -88,8 +88,8 @@ const NAV_ITEMS: NavItemProps[] = [
   },
 ];
 
-export default function Sidebar({ 
-  collapsed, 
+export default function Sidebar({
+  collapsed,
   onToggle,
   onNavigate
 }: SidebarProps) {
@@ -121,14 +121,14 @@ export default function Sidebar({
   // Auto-expand group when child path is active
   React.useEffect(() => {
     if (!pathname) return;
-    
+
     NAV_ITEMS.forEach(item => {
       if (item.children) {
         const hasActiveChild = item.children.some(child => {
           if (!child.path) return false;
           return pathname === child.path || pathname.startsWith(child.path + '/');
         });
-        
+
         if (hasActiveChild) {
           setExpandedGroups(prev => {
             if (prev.has(item.id)) return prev;
@@ -147,7 +147,7 @@ export default function Sidebar({
 
   const isActive = React.useCallback((path?: string) => {
     if (!path || !activePath) return false;
-    
+
     const normalizedPath = path === '/' ? '/' : path.replace(/\/$/, '');
 
     if (normalizedPath === '/') return activePath === '/';
@@ -201,11 +201,11 @@ export default function Sidebar({
                     )}
                   >
                     {item.icon && (
-                      <item.icon 
+                      <item.icon
                         className={cn(
-                          "w-5 h-5 flex-shrink-0 transition-colors", 
+                          "w-5 h-5 flex-shrink-0 transition-colors",
                           expandedGroups.has(item.id) ? "text-edu-primary" : "text-slate-400 group-hover:text-edu-primary"
-                        )} 
+                        )}
                       />
                     )}
                     {!collapsed && (
@@ -247,25 +247,25 @@ export default function Sidebar({
                   )}
                 </>
               ) : (
-                  <Link
-                    href={item.path || '#'}
-                    prefetch={false}
-                    onMouseDown={() => item.path && onNavigate?.(item.path)}
-                    className={cn(
-                      'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
-                      isActive(item.path)
-                        ? 'bg-white !text-edu-primary font-bold shadow-sm ring-1 ring-slate-200'
-                        : '!text-slate-600 hover:bg-white hover:!text-slate-900'
-                    )}
-                  >
-                    {item.icon && (
-                      <item.icon 
-                        className={cn(
-                          "w-5 h-5 flex-shrink-0 transition-colors", 
-                          isActive(item.path) ? "!text-edu-primary" : "!text-slate-400 group-hover:!text-slate-600"
-                        )} 
-                      />
-                    )}
+                <Link
+                  href={item.path || '#'}
+                  prefetch={false}
+                  onMouseDown={() => item.path && onNavigate?.(item.path)}
+                  className={cn(
+                    'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
+                    isActive(item.path)
+                      ? 'bg-white !text-edu-primary font-bold shadow-sm ring-1 ring-slate-200'
+                      : '!text-slate-600 hover:bg-white hover:!text-slate-900'
+                  )}
+                >
+                  {item.icon && (
+                    <item.icon
+                      className={cn(
+                        "w-5 h-5 flex-shrink-0 transition-colors",
+                        isActive(item.path) ? "!text-edu-primary" : "!text-slate-400 group-hover:!text-slate-600"
+                      )}
+                    />
+                  )}
                   {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
                   {isActive(item.path) && (
                     <div className="absolute left-[-12px] top-1/2 -translate-y-1/2 w-1 h-6 bg-edu-primary rounded-r-full" />
@@ -297,8 +297,8 @@ export default function Sidebar({
         <div className="p-2 rounded-xl flex items-center gap-3 border border-slate-100 bg-slate-50/50 min-h-[56px]">
           {isClient && currentUser ? (
             <>
-              <Avatar 
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`} 
+              <Avatar
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
                 size={40}
                 className="border border-slate-200 flex-shrink-0"
               />
@@ -321,7 +321,7 @@ export default function Sidebar({
             </div>
           )}
           {!collapsed && (
-            <button 
+            <button
               onClick={handleLogout}
               className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
             >
