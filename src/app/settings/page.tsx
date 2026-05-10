@@ -23,14 +23,14 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { useUsers } from '@/hooks/useUsers';
+import { useUsers, useProfile } from '@/hooks/useUsers';
 
 const { Title, Text, Paragraph } = Typography;
 
 function ChangePasswordForm() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
-  const { changePassword } = useUsers();
+  const { changePassword } = useUsers({ enabled: false });
 
   const handlePasswordChange = async (values: any) => {
     try {
@@ -137,17 +137,8 @@ function ChangePasswordForm() {
 }
 
 function SettingsContent() {
-  const { users = [], isLoading } = useUsers();
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    if (!isLoading) {
-      const localUserStr = localStorage.getItem('euni_user');
-      const localUser = localUserStr ? JSON.parse(localUserStr) : null;
-      const user = users.find((u: any) => u.username === localUser?.username) || localUser;
-      setCurrentUser(user);
-    }
-  }, [isLoading, users]);
+  const { profile, isLoading } = useProfile();
+  const currentUser = profile;
 
   if (isLoading) {
     return <Card className="p-20 text-center"><div className="animate-spin w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full mx-auto" /></Card>;
@@ -217,12 +208,12 @@ function SettingsContent() {
                     </div>
                     <div className="space-y-8">
                       <div className="group">
-                        <Text className="text-[11px] uppercase font-bold tracking-wider text-slate-400 block mb-2 group-hover:text-brand-500 transition-colors">Đơn vị công tác</Text>
+                        <Text className="text-[11px] uppercase font-bold tracking-wider text-slate-400 block mb-2 group-hover:text-brand-500 transition-colors">Khoa công tác</Text>
                         <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 group-hover:bg-white group-hover:border-brand-100 group-hover:shadow-sm transition-all">
                           <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
                             <Building2 className="w-5 h-5 text-brand-600" />
                           </div>
-                          <span className="font-bold text-slate-900">{currentUser?.department}</span>
+                          <span className="font-bold text-slate-900">{currentUser?.faculty}</span>
                         </div>
                       </div>
                       <div className="group">
@@ -245,7 +236,7 @@ function SettingsContent() {
                       <p className="text-sm font-bold text-blue-900 mb-1">Thông tin được bảo mật</p>
                       <p className="text-xs text-blue-700 leading-relaxed font-medium">
                         Các thông tin định danh trên được đồng bộ từ hệ thống nhân sự trung tâm.
-                        Để thay đổi, vui lòng liên hệ <strong>Phòng Tổ chức Cán bộ</strong>.
+                        Để thay đổi, vui lòng liên hệ <strong>Văn phòng Khoa</strong>.
                       </p>
                     </div>
                   </div>

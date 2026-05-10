@@ -35,20 +35,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    const token = localStorage.getItem('euni_access_token');
-    const userData = localStorage.getItem('euni_user');
-
     const checkAuth = () => {
-      if (!token || !userData) {
+      const token = localStorage.getItem('euni_access_token');
+      const refreshToken = localStorage.getItem('euni_refresh_token');
+      const userData = localStorage.getItem('euni_user');
+
+      // Nếu không có userData hoặc cả 2 token đều không có, chắc chắn là chưa login
+      if (!userData || (!token && !refreshToken)) {
         return false;
       }
 
-      if (isTokenExpired(token)) {
-        message.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-        localStorage.removeItem('euni_access_token');
-        localStorage.removeItem('euni_refresh_token');
-        localStorage.removeItem('euni_user');
-        return false;
+      // Nếu có refresh token nhưng mất access token hoặc access token hết hạn
+      // Chúng ta vẫn cho là "authenticated" để render UI, 
+      // và để axios interceptor thực hiện silent refresh khi có request API đầu tiên.
+      if (refreshToken && (!token || isTokenExpired(token))) {
+        return true;
       }
 
       return true;

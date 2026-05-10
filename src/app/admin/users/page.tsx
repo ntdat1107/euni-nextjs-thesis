@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useUsers, User } from '@/hooks/useUsers';
 import { useRBAC } from '@/hooks/useRBAC';
-import { useDepartments } from '@/hooks/useDepartments';
+import { useFaculties } from '@/hooks/useFaculties';
 import TableSkeleton from '@/components/ui/TableSkeleton';
 
 const { Title, Text } = Typography;
@@ -44,7 +44,7 @@ const { Title, Text } = Typography;
 function UserManagementContent() {
   const { users = [], isLoading: loadingUsers, createUser, resetPassword, deleteUser, updateUser } = useUsers();
   const { roles = [], isLoading: loadingRBAC } = useRBAC();
-  const { departments = [], isLoading: loadingDepts } = useDepartments();
+  const { faculties = [], isLoading: loadingDepts } = useFaculties();
   const { message, modal } = App.useApp();
 
   const isLoading = loadingUsers || loadingRBAC || loadingDepts;
@@ -159,9 +159,9 @@ function UserManagementContent() {
   };
 
   // Optimize lookups using Maps (O(1) instead of O(n) .find) - MUST be before columns
-  const deptMap = React.useMemo(() => 
-    new Map(departments.map(d => [d.code, d.name])),
-    [departments]
+  const facultyMap = React.useMemo(() => 
+    new Map(faculties.map(d => [d.code, d.name])),
+    [faculties]
   );
   
   const roleMap = React.useMemo(() => 
@@ -193,11 +193,11 @@ function UserManagementContent() {
       render: (text: string) => <span className="font-mono font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded text-xs">{text}</span>
     },
     {
-      title: 'Phòng ban / Khoa',
-      dataIndex: 'department',
-      key: 'department',
+      title: 'Khoa',
+      dataIndex: 'faculty',
+      key: 'faculty',
       render: (code: string) => {
-        const name = deptMap.get(code);
+        const name = facultyMap.get(code);
         return <span className="font-medium text-slate-600">{name || code}</span>;
       }
     },
@@ -255,7 +255,7 @@ function UserManagementContent() {
         </Space>
       ),
     },
-  ], [departments, roles, deptMap, roleMap]);
+  ], [faculties, roles, facultyMap, roleMap]);
 
   if (isLoading) {
     return <TableSkeleton rows={10} columns={5} />;
@@ -411,13 +411,13 @@ function UserManagementContent() {
               </Col>
               <Col span={12}>
                 <Form.Item 
-                  name="department" 
-                  label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Đơn vị/Khoa</span>} 
-                  rules={[{ required: true, message: 'Vui lòng chọn đơn vị' }]}
+                  name="faculty" 
+                  label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Khoa</span>} 
+                  rules={[{ required: true, message: 'Vui lòng chọn khoa' }]}
                 >
-                  <Select placeholder="Chọn phòng ban" className="rounded-xl h-11">
-                    {departments.map(dept => (
-                      <Select.Option key={dept.code} value={dept.code}>{dept.name}</Select.Option>
+                  <Select placeholder="Chọn khoa" className="rounded-xl h-11">
+                    {faculties.map(f => (
+                      <Select.Option key={f.code} value={f.code}>{f.name}</Select.Option>
                     ))}
                   </Select>
                 </Form.Item>
@@ -507,12 +507,12 @@ function UserManagementContent() {
               </Col>
               <Col span={12}>
                 <Form.Item 
-                  name="department" 
-                  label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Đơn vị/Khoa</span>} 
+                  name="faculty" 
+                  label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Khoa</span>} 
                 >
                   <Select className="rounded-xl h-11">
-                    {departments.map(dept => (
-                      <Select.Option key={dept.code} value={dept.code}>{dept.name}</Select.Option>
+                    {faculties.map(f => (
+                      <Select.Option key={f.code} value={f.code}>{f.name}</Select.Option>
                     ))}
                   </Select>
                 </Form.Item>

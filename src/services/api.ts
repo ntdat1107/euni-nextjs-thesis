@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { Modal } from 'antd';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
@@ -8,6 +9,33 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+let isLogoutInProgress = false;
+
+const subscribeTokenRefresh = (cb: (token: string) => void) => {
+  refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token: string) => {
+  refreshSubscribers.map((cb) => cb(token));
+  refreshSubscribers = [];
+};
+
+const handleLogout = () => {
+  if (typeof window !== 'undefined' && !isLogoutInProgress) {
+    isLogoutInProgress = true;
+    localStorage.removeItem('euni_access_token');
+    localStorage.removeItem('euni_refresh_token');
+    localStorage.removeItem('euni_user');
+    
+    if (!window.location.pathname.includes('/login')) {
+      const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?session=expired&redirect=${redirectUrl}`;
+    }
+  }
+};
 
 // Add a request interceptor to include JWT token
 apiClient.interceptors.request.use(
@@ -45,30 +73,59 @@ apiClient.interceptors.response.use(
 
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Chỉ xử lý refresh token nếu lỗi là 401 (Unauthorized) và chưa thử lại lần nào
-    if (error.response?.status === 401 && !originalRequest._retry && typeof window !== 'undefined') {
+    if (isLogoutInProgress) {
+      return Promise.reject(error);
+    }
+
+    // Handle 401 Unauthorized (Expired token or Invalid token)
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      
+      // If it's the refresh token endpoint itself that failed, logout
+      if (originalRequest.url?.includes('/auth/refresh-token')) {
+        handleLogout();
+        return Promise.reject(error);
+      }
+
+      if (originalRequest._retry) {
+        handleLogout();
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((token: string) => {
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+            }
+            resolve(apiClient(originalRequest));
+          });
+        });
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
       
       try {
         const refreshToken = localStorage.getItem('euni_refresh_token');
         if (!refreshToken) {
-          throw new Error('No refresh token available');
+          handleLogout();
+          return Promise.reject(error);
         }
 
-        // Gọi API refresh token sử dụng instance axios mới để tránh loop interceptor
+        // Fix: Use API_BASE_URL which already includes /api, or just /auth/refresh-token
+        // AuthController is at /api/auth/refresh-token
         const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
         
         const responseData = res.data;
         if (responseData && responseData.success) {
           const { accessToken, refreshToken: newRefreshToken, tokenVersion } = responseData.data;
           
-          // Lưu token mới vào localStorage
           localStorage.setItem('euni_access_token', accessToken);
           if (newRefreshToken) {
             localStorage.setItem('euni_refresh_token', newRefreshToken);
           }
           
-          // Cập nhật tokenVersion đồng bộ để tránh bị JwtAuthenticationFilter chặn
+          // Update tokenVersion in user object to avoid mismatch
           const userStr = localStorage.getItem('euni_user');
           if (userStr && tokenVersion !== undefined) {
             const user = JSON.parse(userStr);
@@ -76,28 +133,46 @@ apiClient.interceptors.response.use(
             localStorage.setItem('euni_user', JSON.stringify(user));
           }
 
-          // Cập nhật header cho request hiện tại và thực hiện gửi lại
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           }
+          
+          onRefreshed(accessToken);
           return apiClient(originalRequest);
         } else {
-          throw new Error(responseData?.message || 'Refresh token failed');
+          handleLogout();
+          return Promise.reject(error);
         }
       } catch (refreshError) {
-        // Nếu thực sự thất bại trong việc refresh (ví dụ refresh token hết hạn thật), mới logout
-        console.error('Session expired, logging out...', refreshError);
-        
-        localStorage.removeItem('euni_access_token');
-        localStorage.removeItem('euni_refresh_token');
-        localStorage.removeItem('euni_user');
-        
-        // Tránh redirect liên tục nếu đang ở trang login
-        if (!window.location.pathname.includes('/login')) {
-          const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
-          window.location.href = `/login?session=expired&redirect=${redirectUrl}`;
-        }
+        handleLogout();
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    // Handle 403 Forbidden (Logged in but no permission)
+    if (error.response?.status === 403) {
+      if (typeof window !== 'undefined') {
+        const data = error.response.data as any;
+        const msg = data?.message || 'Bạn không có quyền thực hiện hành động này.';
+        
+        Modal.error({
+          title: 'Truy cập bị từ chối',
+          content: msg,
+          okText: 'Về trang chủ',
+          onOk: () => {
+            window.location.href = '/';
+          }
+        });
+        
+        if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
+          setTimeout(() => {
+            if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
+              window.location.href = '/';
+            }
+          }, 5000);
+        }
       }
     }
 

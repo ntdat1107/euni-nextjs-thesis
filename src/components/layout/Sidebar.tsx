@@ -64,8 +64,8 @@ const NAV_ITEMS: NavItemProps[] = [
     label: 'Dữ liệu gốc',
     icon: GraduationCap,
     children: [
-      { id: 'programs', label: 'Chương trình', path: '/master-data/programs' },
       { id: 'majors', label: 'Ngành học', path: '/master-data/majors' },
+      { id: 'programs', label: 'Chương trình', path: '/master-data/programs' },
       { id: 'subjects', label: 'Học phần', path: '/master-data/subjects' },
     ],
   },

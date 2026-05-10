@@ -5,12 +5,13 @@ import { userService, User } from '@/services/userService';
 import { apiClient } from '@/services/api';
 import { message } from 'antd';
 
-export function useUsers() {
+export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
   const queryClient = useQueryClient();
 
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ['users'],
     queryFn: ({ signal }) => userService.getAll(signal),
+    enabled: options.enabled,
   });
 
   const deleteUserMutation = useMutation({
@@ -84,4 +85,13 @@ export function useUsers() {
     resetPassword: async (id: string) => resetPasswordMutation.mutateAsync(id),
     changePassword: async (data: any) => changePasswordMutation.mutateAsync(data),
   };
+}
+
+export function useProfile() {
+  const { data: profile, isLoading, error } = useQuery({
+    queryKey: ['profile'],
+    queryFn: ({ signal }) => userService.getMe(signal),
+  });
+
+  return { profile, isLoading, error };
 }

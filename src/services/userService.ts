@@ -6,7 +6,7 @@ export interface User {
   email: string;
   fullName: string;
   employeeId: string;
-  department: string;
+  faculty: string;
   phone: string;
   roles: string[];
   status: string;
@@ -15,6 +15,10 @@ export interface User {
 export const userService = {
   getAll: async (signal?: AbortSignal): Promise<User[]> => {
     return api.get('/users', { signal });
+  },
+
+  getMe: async (signal?: AbortSignal): Promise<User> => {
+    return api.get('/users/me', { signal });
   },
 
   getById: async (id: string, signal?: AbortSignal): Promise<User> => {

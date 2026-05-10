@@ -22,7 +22,10 @@ function LoginContent() {
 
   React.useEffect(() => {
     const token = localStorage.getItem('euni_access_token');
-    if (token) {
+    const refreshToken = localStorage.getItem('euni_refresh_token');
+    const userData = localStorage.getItem('euni_user');
+
+    if ((token || refreshToken) && userData) {
       const redirect = searchParams.get('redirect') || '/';
       router.push(redirect);
     }
