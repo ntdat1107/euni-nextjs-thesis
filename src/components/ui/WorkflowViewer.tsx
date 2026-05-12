@@ -65,18 +65,34 @@ export default function WorkflowViewer({ xml = DEFAULT_DIAGRAM }: { xml?: string
 
     // Use NavigatedViewer for better zoom/pan support
     const viewer = new BpmnViewer({
-      container: containerRef.current
+      container: containerRef.current,
+      zoomScroll: { enabled: false },
     });
 
     viewerRef.current = viewer;
     let isMounted = true;
 
+    const handleWheelAction = (e: WheelEvent) => {
+      const canvas = viewerRef.current?.get('canvas') as any;
+      if (!canvas) return;
+
+      if (e.ctrlKey) {
+        e.preventDefault();
+        canvas.zoom(canvas.zoom() * (e.deltaY > 0 ? 0.8 : 1.2));
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheelAction, { passive: false });
+    }
+
     const render = async () => {
       if (!xml) return;
-      
+
       try {
         const result = await viewer.importXML(xml);
-        
+
         if (!isMounted) return;
 
         if (result.warnings && result.warnings.length > 0) {
@@ -98,6 +114,9 @@ export default function WorkflowViewer({ xml = DEFAULT_DIAGRAM }: { xml?: string
 
     return () => {
       isMounted = false;
+      if (container) {
+        container.removeEventListener('wheel', handleWheelAction);
+      }
       if (viewerRef.current) {
         viewerRef.current.destroy();
         viewerRef.current = null;

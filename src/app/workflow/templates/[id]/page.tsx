@@ -4,13 +4,13 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import WorkflowDesigner from '@/components/ui/WorkflowDesigner';
-import { 
-  Typography, Card, Button, Space, Breadcrumb, Tag, 
-  Divider, Form, Input, Row, Col, Modal, App as AntdApp, Switch 
+import {
+  Typography, Card, Button, Space, Breadcrumb, Tag,
+  Divider, Form, Input, Row, Col, Modal, App as AntdApp, Switch
 } from 'antd';
-import { 
-  Save, Edit3, Eye, ArrowLeft, Download, Upload, 
-  FileText, Code, Info, AlertCircle 
+import {
+  Save, Edit3, Eye, ArrowLeft, Download, Upload,
+  FileText, Code, Info, AlertCircle
 } from 'lucide-react';
 import workflowService, { WorkflowTemplateResponse, WorkflowDraftResponse } from '@/services/workflowService';
 
@@ -36,7 +36,7 @@ export default function WorkflowEditorPage() {
   const router = useRouter();
   const id = params.id as string;
   const isNew = id === 'new';
-  
+
   const [mode, setMode] = useState<'view' | 'edit'>(isNew ? 'edit' : 'view');
   const [xml, setXml] = useState(DEFAULT_DIAGRAM);
   const [form] = Form.useForm();
@@ -66,7 +66,7 @@ export default function WorkflowEditorPage() {
         setLoading(false);
       }
     };
-    
+
     fetchTemplate();
     return () => controller.abort();
   }, [id, isNew, form]);
@@ -163,9 +163,9 @@ export default function WorkflowEditorPage() {
 
           <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
             <div className="flex items-center gap-4">
-              <Button 
-                icon={<ArrowLeft size={18} />} 
-                type="text" 
+              <Button
+                icon={<ArrowLeft size={18} />}
+                type="text"
                 onClick={() => router.push('/workflow/templates')}
                 className="hover:bg-slate-100"
               />
@@ -177,8 +177,8 @@ export default function WorkflowEditorPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {!isNew && (
-                    <Tag 
-                      color={mode === 'edit' ? 'orange' : 'blue'} 
+                    <Tag
+                      color={mode === 'edit' ? 'orange' : 'blue'}
                       className="rounded-full px-2 text-[10px] uppercase font-bold m-0 border-none"
                       style={{ background: mode === 'edit' ? '#fff7ed' : '#eff6ff', color: mode === 'edit' ? '#c2410c' : '#1d4ed8' }}
                     >
@@ -191,17 +191,17 @@ export default function WorkflowEditorPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
               {!isNew && (
                 <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 h-10">
                   <span className="text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Trạng thái:</span>
-                  <Switch 
-                    size="small" 
-                    checked={(watchedStatus || 'ACTIVE').toUpperCase() === 'ACTIVE'} 
+                  <Switch
+                    size="small"
+                    checked={(watchedStatus || 'ACTIVE').toUpperCase() === 'ACTIVE'}
                     onChange={handleStatusToggle}
                   />
-                  <Tag 
+                  <Tag
                     color={(watchedStatus || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'success' : 'error'}
                     className="border-none m-0 text-[10px] font-bold uppercase rounded-md"
                   >
@@ -209,13 +209,13 @@ export default function WorkflowEditorPage() {
                   </Tag>
                 </div>
               )}
-              
+
               <div className="flex items-center gap-3">
                 {mode === 'edit' ? (
                   <>
-                    <Button 
+                    <Button
                       type="primary"
-                      icon={<Save size={18} />} 
+                      icon={<Save size={18} />}
                       onClick={handleSave}
                       className="rounded-xl px-8 h-11 font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 border-none"
                     >
@@ -223,9 +223,9 @@ export default function WorkflowEditorPage() {
                     </Button>
                   </>
                 ) : (
-                  <Button 
-                    type="primary" 
-                    icon={<Edit3 size={18} />} 
+                  <Button
+                    type="primary"
+                    icon={<Edit3 size={18} />}
                     onClick={handleEditClick}
                     className="rounded-xl px-8 h-11 font-medium bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 border-none"
                   >
@@ -240,13 +240,13 @@ export default function WorkflowEditorPage() {
         {/* Content Section */}
         <Row gutter={[24, 24]}>
           <Col span={24}>
-            <Card 
+            <Card
               title={<Space><FileText size={18} className="text-blue-500" /><span>Thông tin cơ bản</span></Space>}
               className="shadow-sm border-slate-200 rounded-2xl"
             >
-              <Form 
-                form={form} 
-                layout="vertical" 
+              <Form
+                form={form}
+                layout="vertical"
                 disabled={mode === 'view'}
                 initialValues={{
                   name: '',
@@ -260,18 +260,18 @@ export default function WorkflowEditorPage() {
                 <Form.Item name="status" hidden><Input /></Form.Item>
                 <Row gutter={24}>
                   <Col span={8}>
-                    <Form.Item 
-                      label={<Text strong>Tên quy trình</Text>} 
-                      name="name" 
+                    <Form.Item
+                      label={<Text strong>Tên quy trình</Text>}
+                      name="name"
                       rules={[{ required: true, message: 'Nhập tên quy trình' }]}
                     >
                       <Input placeholder="VD: Quy trình Phê duyệt Đề tài" className="h-10 rounded-lg" />
                     </Form.Item>
                   </Col>
                   <Col span={8}>
-                    <Form.Item 
-                      label={<Text strong>Mã quy trình (Unique ID)</Text>} 
-                      name="code" 
+                    <Form.Item
+                      label={<Text strong>Mã quy trình (Unique ID)</Text>}
+                      name="code"
                       rules={[{ required: true, message: 'Nhập mã định danh' }]}
                     >
                       <Input placeholder="VD: APPROVE_TOPIC_001" className="h-10 rounded-lg font-mono" />
@@ -293,20 +293,20 @@ export default function WorkflowEditorPage() {
           </Col>
 
           <Col span={24}>
-            <Card 
+            <Card
               className="shadow-sm border-slate-200 rounded-2xl overflow-hidden"
               styles={{ body: { padding: 0 } }}
             >
               <div className="h-[750px]">
-                <WorkflowDesigner 
+                <WorkflowDesigner
                   key={id}
-                  initialXml={xml} 
-                  onChange={handleXmlChange} 
+                  initialXml={xml}
+                  onChange={handleXmlChange}
                   onSave={(newXml: React.SetStateAction<string>) => {
                     setXml(newXml);
                     setMode('view');
                   }}
-                  readOnly={mode === 'view'} 
+                  readOnly={mode === 'view'}
                   workflowCode={watchedCode}
                   workflowName={watchedName}
                   workflowDescription={watchedDescription}
