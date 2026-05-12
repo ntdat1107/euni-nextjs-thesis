@@ -6,11 +6,12 @@ import AppShell from '@/components/layout/AppShell';
 import WorkflowDesigner from '@/components/ui/WorkflowDesigner';
 import {
   Typography, Card, Button, Space, Breadcrumb, Tag,
-  Divider, Form, Input, Row, Col, Modal, App as AntdApp, Switch
+  Divider, Form, Input, Row, Col, Modal, App as AntdApp, Switch,
+  Tabs, Table
 } from 'antd';
 import {
   Save, Edit3, Eye, ArrowLeft, Download, Upload,
-  FileText, Code, Info, AlertCircle
+  FileText, Code, Info, AlertCircle, History, Clock
 } from 'lucide-react';
 import workflowService, { WorkflowTemplateResponse, WorkflowDraftResponse } from '@/services/workflowService';
 
@@ -19,13 +20,45 @@ const { Title, Paragraph, Text } = Typography;
 const DEFAULT_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" name="Bắt đầu" />
+    <bpmn:startEvent id="StartEvent_1" name="Bắt đầu">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Activity_1" name="Nhiệm vụ mới">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1" name="Kết thúc">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="EndEvent_1" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
         <dc:Bounds x="173" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="171" y="145" width="40" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1_di" bpmnElement="Activity_1">
+        <dc:Bounds x="260" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="422" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="419" y="145" width="43" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="209" y="120" />
+        <di:waypoint x="260" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="360" y="120" />
+        <di:waypoint x="422" y="120" />
+      </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
@@ -42,34 +75,59 @@ export default function WorkflowEditorPage() {
   const [form] = Form.useForm();
   const [template, setTemplate] = useState<WorkflowTemplateResponse | null>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [history, setHistory] = useState<WorkflowTemplateResponse[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<'design' | 'history'>('design');
+
+  const isHistoryView = !!(template && !template.isActive);
+
+  const fetchTemplate = useCallback(async (signal?: AbortSignal) => {
+    if (isNew) return;
+    setLoading(true);
+    
+    try {
+      const data = await workflowService.getById(id, signal);
+      setTemplate(data);
+      setXml(data.xmlContent);
+      form.setFieldsValue({
+        name: data.name,
+        code: data.code,
+        description: data.description,
+        status: data.status,
+        version: data.version || 1
+      });
+    } catch (error: any) {
+      if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+      message.error('Không thể tải thông tin quy trình');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, isNew, form, message]);
+
+  const fetchHistory = useCallback(async () => {
+    if (isNew) return;
+    setLoadingHistory(true);
+    try {
+      const data = await workflowService.getHistory(id);
+      setHistory(data);
+    } catch (error) {
+      message.error('Không thể tải lịch sử quy trình');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [id, isNew, message]);
 
   useEffect(() => {
-    if (isNew) return;
-
     const controller = new AbortController();
-    const fetchTemplate = async () => {
-      try {
-        const data = await workflowService.getById(id, controller.signal);
-        setTemplate(data);
-        setXml(data.xmlContent);
-        form.setFieldsValue({
-          name: data.name,
-          code: data.code,
-          description: data.description,
-          status: data.status,
-          version: data.version || 1
-        });
-      } catch (error: any) {
-        if (error.name === 'CanceledError' || error.name === 'AbortError') return;
-        message.error('Không thể tải thông tin quy trình');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTemplate();
+    fetchTemplate(controller.signal);
     return () => controller.abort();
-  }, [id, isNew, form]);
+  }, [fetchTemplate]);
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [activeTab, fetchHistory]);
 
   const handleEditClick = async () => {
     if (isNew) {
@@ -110,15 +168,32 @@ export default function WorkflowEditorPage() {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      await workflowService.saveOfficial({
+      const result = await workflowService.saveOfficial({
         ...values,
         xmlContent: xml,
         status: values.status || 'ACTIVE'
       });
       message.success('Đã lưu quy trình thành công');
-      setMode('view');
+      
       if (isNew) {
         router.push('/workflow/templates');
+      } else {
+        // Cập nhật URL sang ID mới (vì backend tạo record mới cho mỗi version)
+        if (result.id !== id) {
+          router.replace(`/workflow/templates/${result.id}`);
+        }
+        
+        // Cập nhật state local ngay lập tức từ kết quả trả về
+        setTemplate(result);
+        setXml(result.xmlContent);
+        form.setFieldsValue({
+          name: result.name,
+          code: result.code,
+          description: result.description,
+          status: result.status,
+          version: result.version || 1
+        });
+        setMode('view');
       }
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Lỗi khi lưu quy trình');
@@ -172,7 +247,7 @@ export default function WorkflowEditorPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <Title level={2} className="!mb-0 !text-slate-800">
-                    {isNew ? 'Thiết kế Quy trình mới' : `Quy trình: ${watchedName || '...'} - ${watchedCode || '...'}`}
+                    {isNew ? 'Thiết kế Quy trình mới' : `Quy trình: ${watchedName || '...'} - ${watchedCode || '...'} (v${watchedVersion || '1'})`}
                   </Title>
                 </div>
                 <div className="flex items-center gap-2">
@@ -227,7 +302,8 @@ export default function WorkflowEditorPage() {
                     type="primary"
                     icon={<Edit3 size={18} />}
                     onClick={handleEditClick}
-                    className="rounded-xl px-8 h-11 font-medium bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 border-none"
+                    disabled={isHistoryView}
+                    className={`rounded-xl px-8 h-11 font-medium ${isHistoryView ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'} border-none`}
                   >
                     Chỉnh sửa
                   </Button>
@@ -235,60 +311,180 @@ export default function WorkflowEditorPage() {
               </div>
             </div>
           </div>
+
+          {isHistoryView && (
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
+              <div className="bg-amber-100 p-2 rounded-xl">
+                <Clock className="text-amber-600" size={20} />
+              </div>
+              <div className="flex-1">
+                <Text strong className="text-amber-900 block text-sm">Chế độ xem lịch sử (Read-only)</Text>
+                <Text className="text-amber-700 text-xs">Bạn đang xem phiên bản v{template?.version} đã cũ. Mọi thay đổi đều không được phép ở chế độ này.</Text>
+              </div>
+              <Button 
+                type="primary" 
+                size="small" 
+                className="bg-amber-600 border-none rounded-lg"
+                onClick={() => router.push(`/workflow/templates`)}
+              >
+                Quay lại danh sách
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Content Section */}
         <Row gutter={[24, 24]}>
           <Col span={24}>
-            <Card
-              title={<Space><FileText size={18} className="text-blue-500" /><span>Thông tin cơ bản</span></Space>}
-              className="shadow-sm border-slate-200 rounded-2xl"
-            >
-              <Form
-                form={form}
-                layout="vertical"
-                disabled={mode === 'view'}
-                initialValues={{
-                  name: '',
-                  code: '',
-                  description: '',
-                  status: 'ACTIVE',
-                  version: 1
-                }}
-              >
-                {/* Hidden status field to keep it in form state */}
-                <Form.Item name="status" hidden><Input /></Form.Item>
-                <Row gutter={24}>
-                  <Col span={8}>
-                    <Form.Item
-                      label={<Text strong>Tên quy trình</Text>}
-                      name="name"
-                      rules={[{ required: true, message: 'Nhập tên quy trình' }]}
-                    >
-                      <Input placeholder="VD: Quy trình Phê duyệt Đề tài" className="h-10 rounded-lg" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item
-                      label={<Text strong>Mã quy trình (Unique ID)</Text>}
-                      name="code"
-                      rules={[{ required: true, message: 'Nhập mã định danh' }]}
-                    >
-                      <Input placeholder="VD: APPROVE_TOPIC_001" className="h-10 rounded-lg font-mono" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item label={<Text strong>Phiên bản</Text>} name="version">
-                      <Input disabled className="h-10 rounded-lg bg-slate-50 font-bold text-blue-600" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={24}>
-                    <Form.Item label={<Text strong>Mô tả chi tiết</Text>} name="description">
-                      <Input.TextArea rows={2} placeholder="Mô tả mục đích và phạm vi áp dụng của quy trình..." className="rounded-lg" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Form>
+            <Card className="shadow-sm border-slate-100 rounded-2xl overflow-hidden" styles={{ body: { padding: '0 24px 24px 24px' } }}>
+              <Tabs
+                activeKey={activeTab}
+                onChange={(key) => setActiveTab(key as any)}
+                className="workflow-tabs"
+                items={[
+                  {
+                    key: 'design',
+                    label: (
+                      <Space className="py-2">
+                        <FileText size={18} className="text-blue-500" />
+                        <span>Thông tin cơ bản</span>
+                      </Space>
+                    ),
+                    children: (
+                      <div className="pt-4">
+                        <Form
+                          form={form}
+                          layout="vertical"
+                          disabled={mode === 'view'}
+                          initialValues={{
+                            name: '',
+                            code: '',
+                            description: '',
+                            status: 'ACTIVE',
+                            version: 1
+                          }}
+                        >
+                          <Form.Item name="status" hidden><Input /></Form.Item>
+                          <Row gutter={24}>
+                            <Col span={8}>
+                              <Form.Item
+                                label={<Text strong className="text-slate-600">Tên quy trình</Text>}
+                                name="name"
+                                rules={[{ required: true, message: 'Nhập tên quy trình' }]}
+                              >
+                                <Input placeholder="VD: Quy trình Phê duyệt Đề tài" className="h-11 rounded-xl bg-slate-50/50 border-slate-200 hover:border-blue-400 focus:border-blue-500 transition-all" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                label={<Text strong className="text-slate-600">Mã quy trình (Unique ID)</Text>}
+                                name="code"
+                                rules={[{ required: true, message: 'Nhập mã định danh' }]}
+                              >
+                                <Input placeholder="VD: APPROVE_TOPIC_001" className="h-11 rounded-xl bg-slate-50/50 border-slate-200 font-mono text-blue-700 hover:border-blue-400 focus:border-blue-500 transition-all" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item label={<Text strong className="text-slate-600">Phiên bản hiện tại</Text>} name="version">
+                                <Input disabled className="h-11 rounded-xl bg-slate-100 border-none font-bold text-blue-600 px-4" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={24}>
+                              <Form.Item label={<Text strong className="text-slate-600">Mô tả chi tiết</Text>} name="description" className="!mb-0">
+                                <Input.TextArea rows={3} placeholder="Mô tả mục đích và phạm vi áp dụng của quy trình..." className="rounded-xl bg-slate-50/50 border-slate-200 hover:border-blue-400 focus:border-blue-500 transition-all p-3" />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </Form>
+                      </div>
+                    ),
+                  },
+                  ...(!isHistoryView ? [{
+                    key: 'history',
+                    label: (
+                      <Space className="py-2">
+                        <History size={18} className="text-orange-500" />
+                        <span>Lịch sử phiên bản</span>
+                      </Space>
+                    ),
+                    children: (
+                      <div className="pt-4">
+                        <Table
+                          loading={loadingHistory}
+                          dataSource={history}
+                          rowKey="id"
+                          pagination={{ 
+                            pageSize: 5,
+                            showSizeChanger: false,
+                            className: "mt-4"
+                          }}
+                          size="middle"
+                          className="history-table"
+                          columns={[
+                            {
+                              title: 'Phiên bản',
+                              dataIndex: 'version',
+                              key: 'version',
+                              render: (v) => <Tag color="blue" className="rounded-lg px-3 font-bold m-0">v{v}</Tag>,
+                              width: 120,
+                            },
+                            {
+                              title: 'Tên quy trình',
+                              dataIndex: 'name',
+                              key: 'name',
+                              render: (text) => <Text strong className="text-slate-700">{text}</Text>
+                            },
+                            {
+                              title: 'Trạng thái',
+                              dataIndex: 'isActive',
+                              key: 'isActive',
+                              render: (isActive, record) => (
+                                <Space>
+                                  {isActive ? (
+                                    <Tag color="success" className="border-none rounded-full px-3 uppercase text-[10px] font-bold">Current</Tag>
+                                  ) : (
+                                    <Tag className="border-none bg-slate-100 text-slate-500 rounded-full px-3 uppercase text-[10px] font-bold">History</Tag>
+                                  )}
+                                  {record.status === 'INACTIVE' && <Tag color="error" className="border-none rounded-full px-3 uppercase text-[10px] font-bold">Inactive</Tag>}
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: 'Thời gian cập nhật',
+                              dataIndex: 'updatedAt',
+                              key: 'updatedAt',
+                              render: (date) => (
+                                <Space size={4} className="text-slate-500">
+                                  <Clock size={14} />
+                                  <span>{new Date(date).toLocaleString('vi-VN')}</span>
+                                </Space>
+                              ),
+                            },
+                            {
+                              title: 'Thao tác',
+                              key: 'actions',
+                              width: 100,
+                              align: 'center',
+                              render: (_, record) => (
+                                <Button 
+                                  size="small" 
+                                  type="text"
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg flex items-center justify-center w-full"
+                                  icon={<Eye size={16} />}
+                                  onClick={() => router.push(`/workflow/templates/${record.id}`)}
+                                >
+                                  Xem
+                                </Button>
+                              ),
+                            },
+                          ]}
+                        />
+                      </div>
+                    ),
+                  }
+                ] : [])
+              ]}
+            />
             </Card>
           </Col>
 
@@ -296,6 +492,12 @@ export default function WorkflowEditorPage() {
             <Card
               className="shadow-sm border-slate-200 rounded-2xl overflow-hidden"
               styles={{ body: { padding: 0 } }}
+              title={
+                <Space>
+                  <Code size={18} className="text-indigo-500" />
+                  <span>Thiết kế luồng nghiệp vụ</span>
+                </Space>
+              }
             >
               <div className="h-[750px]">
                 <WorkflowDesigner
@@ -318,14 +520,54 @@ export default function WorkflowEditorPage() {
       </div>
 
       <style jsx global>{`
-        .workflow-segmented.ant-segmented {
-          background: transparent;
+        .workflow-tabs.ant-tabs .ant-tabs-nav::before {
+          border-bottom: 1px solid #f1f5f9;
         }
-        .workflow-segmented .ant-segmented-item-selected {
-          background: #ffffff !important;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-          color: #4f46e5 !important;
+        .workflow-tabs.ant-tabs .ant-tabs-tab {
+          margin: 0 12px 0 0 !important;
+          padding: 16px 8px !important;
+        }
+        .workflow-tabs.ant-tabs .ant-tabs-tab-btn {
+          color: #64748b;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        .workflow-tabs.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+          color: #3b82f6 !important;
           font-weight: 600;
+        }
+        .workflow-tabs.ant-tabs .ant-tabs-ink-bar {
+          height: 3px !important;
+          border-radius: 3px 3px 0 0;
+          background: #3b82f6 !important;
+        }
+        
+        .history-table .ant-table-thead > tr > th {
+          background: #f8fafc;
+          color: #64748b;
+          font-size: 11px;
+          text-transform: uppercase;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          border-bottom: 1px solid #f1f5f9;
+        }
+        .history-table .ant-table-tbody > tr > td {
+          border-bottom: 1px solid #f1f5f9;
+        }
+        .history-table .ant-table-tbody > tr:hover > td {
+          background: #f1f5f9/30 !important;
+        }
+
+        /* Custom style for disabled inputs to look readable */
+        .ant-input[disabled], .ant-input-affix-wrapper-disabled, .ant-select-disabled .ant-select-selector {
+          background-color: #f8fafc !important;
+          color: #334155 !important;
+          border-color: #e2e8f0 !important;
+          cursor: default !important;
+          opacity: 1 !important;
+        }
+        .ant-form-item-label > label {
+          color: #64748b !important;
         }
       `}</style>
     </AppShell>

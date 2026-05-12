@@ -61,6 +61,10 @@ const workflowService = {
   
   updateStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<WorkflowTemplateResponse> => {
     return api.patch(`/workflow-templates/${id}/status`, { status });
+  },
+
+  getHistory: async (id: string, signal?: AbortSignal): Promise<WorkflowTemplateResponse[]> => {
+    return api.get(`/workflow-templates/${id}/history`, { signal });
   }
 };
 

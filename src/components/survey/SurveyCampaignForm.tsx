@@ -5,55 +5,23 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   Typography, Card, Button, Space, Breadcrumb, Form, Input,
   Select, Steps, Divider, Row, Col, DatePicker, App as AntdApp,
-  Empty, Checkbox
+  Empty, Checkbox,
+  Tag
 } from 'antd';
 import {
   ArrowLeft, ArrowRight, Save, CheckCircle2,
-  Settings, FileText, Users, Calendar, Info
+  Settings, FileText, Users, Calendar, Info, Loader2
 } from 'lucide-react';
 import dayjs from 'dayjs';
+import { XMLParser } from 'fast-xml-parser';
+import { programService } from '@/services/programService';
+import workflowService, { WorkflowTemplateResponse } from '@/services/workflowService';
+import { surveyCampaignService, SurveyCampaignRequest } from '@/services/surveyCampaignService';
+import { rbacService, Role } from '@/services/rbacService';
 
 const { Title, Text, Paragraph } = Typography;
 
-// Mock Data
-const MOCK_PROGRAMS = [
-  { id: 'PRO-001', name: 'Công nghệ thông tin', code: 'IT' },
-  { id: 'PRO-002', name: 'Kinh tế đầu tư', code: 'ECON' },
-  { id: 'PRO-003', name: 'Ngôn ngữ Anh', code: 'ENG' },
-];
-
-const MOCK_WORKFLOWS = [
-  { 
-    id: 'WF-001', 
-    name: 'Quy trình đánh giá chuẩn đầu ra', 
-    steps: [
-      { title: 'Lập kế hoạch', description: 'Xác định mục tiêu và đối tượng' },
-      { title: 'Thu thập dữ liệu', description: 'Thực hiện khảo sát và thu thập' },
-      { title: 'Phân tích & Báo cáo', description: 'Xử lý dữ liệu và xuất báo cáo' }
-    ] 
-  },
-  { 
-    id: 'WF-002', 
-    name: 'Quy trình lấy ý kiến sinh viên', 
-    steps: [
-      { title: 'Thiết kế câu hỏi', description: 'Soạn thảo bộ câu hỏi khảo sát' },
-      { title: 'Triển khai khảo sát', description: 'Gửi khảo sát đến sinh viên' }
-    ] 
-  },
-];
-
-const MOCK_CAMPAIGNS: Record<string, any> = {
-  'CAM-001': {
-    id: 'CAM-001',
-    name: 'Khảo sát CTĐT CNTT 2026 - Đợt 1',
-    programId: 'PRO-001',
-    workflowId: 'WF-001',
-    status: 'ACTIVE',
-    startDate: '2026-05-10',
-    endDate: '2026-06-10',
-    description: 'Khảo sát định kỳ đánh giá chất lượng đào tạo ngành CNTT năm 2026',
-  }
-};
+// No more mock data here
 
 export default function SurveyCampaignForm() {
   const router = useRouter();
@@ -66,12 +34,69 @@ export default function SurveyCampaignForm() {
   const mode = searchParams.get('mode');
   const isView = !isNew && mode !== 'edit';
   
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(-1);
   const [form] = Form.useForm();
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<any[]>([]);
+  const [maxStepReached, setMaxStepReached] = useState(-1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowTemplateResponse[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [campaignData, setCampaignData] = useState<any>(null);
 
-  const [maxStepReached, setMaxStepReached] = useState(0);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [pData, wData, rData] = await Promise.all([
+          programService.getAll(),
+          workflowService.getAll(),
+          rbacService.getRoles()
+        ]);
+        setPrograms(pData);
+        setWorkflows(wData);
+        setRoles(rData);
+      } catch (error) {
+        message.error('Lỗi khi tải dữ liệu khởi tạo');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (!isNew && id) {
+      const fetchCampaign = async () => {
+        try {
+          setIsLoading(true);
+          const data = await surveyCampaignService.getById(id);
+          setCampaignData(data);
+          form.setFieldsValue({
+            ...data,
+            range: [dayjs(data.startDate), dayjs(data.endDate)]
+          });
+          setSelectedWorkflowId(data.workflowTemplateId);
+          setWorkflowSteps(data.steps.map(s => ({
+            id: s.id,
+            title: s.stepName,
+            deadline: s.deadline ? dayjs(s.deadline) : null,
+            requiredDocuments: s.requiredDocuments,
+            configuration: s.configuration
+          })));
+          setCurrentStep(0);
+          if (isView) setMaxStepReached(data.steps.length);
+        } catch (error) {
+          message.error('Lỗi khi tải chi tiết đợt khảo sát');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchCampaign();
+    }
+  }, [id, isNew, form, isView]);
 
   useEffect(() => {
     if (currentStep > maxStepReached) {
@@ -79,31 +104,8 @@ export default function SurveyCampaignForm() {
     }
   }, [currentStep, maxStepReached]);
 
-  useEffect(() => {
-    if (!isNew && MOCK_CAMPAIGNS[id]) {
-      const data = MOCK_CAMPAIGNS[id];
-      form.setFieldsValue({
-        ...data,
-        range: [dayjs(data.startDate), dayjs(data.endDate)]
-      });
-      setSelectedWorkflowId(data.workflowId);
-      const wf = MOCK_WORKFLOWS.find(w => w.id === data.workflowId);
-      if (wf) {
-        setWorkflowSteps(wf.steps);
-        // In view mode, allow clicking all steps
-        if (isView) setMaxStepReached(wf.steps.length);
-      }
-    }
-  }, [id, isNew, form, isView]);
-
   const handleWorkflowChange = (value: string) => {
     setSelectedWorkflowId(value);
-    const wf = MOCK_WORKFLOWS.find(w => w.id === value);
-    if (wf) {
-      setWorkflowSteps(wf.steps);
-    } else {
-      setWorkflowSteps([]);
-    }
   };
 
   const next = async () => {
@@ -111,8 +113,68 @@ export default function SurveyCampaignForm() {
       if (!isView) {
         await form.validateFields();
       }
+
+      if (currentStep === -1 && selectedWorkflowId && isNew) {
+        const wf = workflows.find(w => w.id === selectedWorkflowId);
+        if (wf) {
+           const parser = new XMLParser({ 
+             ignoreAttributes: false, 
+             attributeNamePrefix: "",
+             removeNSPrefix: true // Simplify by removing bpmn:, camunda: prefixes
+           });
+           const jsonObj = parser.parse(wf.xmlContent);
+           const definitions = jsonObj.definitions;
+           const process = definitions?.process;
+           
+           if (process) {
+             // Helper to convert single objects to arrays
+             const toArray = (obj: any) => Array.isArray(obj) ? obj : (obj ? [obj] : []);
+             
+             const startEvents = toArray(process.startEvent);
+             const userTasks = [...toArray(process.userTask), ...toArray(process.task)];
+             const sequenceFlows = toArray(process.sequenceFlow);
+             
+             if (startEvents.length > 0) {
+               const steps: any[] = [];
+               let currentNodeId = startEvents[0].id;
+               const visited = new Set<string>();
+               
+               while (currentNodeId && !visited.has(currentNodeId)) {
+                 visited.add(currentNodeId);
+                 
+                 // Find outgoing flow from current node
+                 const outgoingFlow = sequenceFlows.find((f: any) => f.sourceRef === currentNodeId);
+                 if (!outgoingFlow) break;
+                 
+                 const targetId = outgoingFlow.targetRef;
+                 const task = userTasks.find((t: any) => t.id === targetId);
+                 
+                 if (task) {
+                   steps.push({
+                     title: task.name || task.id,
+                     description: task.documentation || '',
+                     configuration: {
+                       taskId: task.id,
+                       performerRole: task.performerRole || '',
+                       approverRole: task.approverRole || '',
+                       screenCode: task.formKey || ''
+                     },
+                     deadline: null,
+                     requiredDocuments: []
+                   });
+                 }
+                 
+                 currentNodeId = targetId;
+               }
+               setWorkflowSteps(steps);
+             }
+           }
+        }
+      }
+
       setCurrentStep(currentStep + 1);
     } catch (error) {
+       console.error('Validation error or parsing error:', error);
     }
   };
 
@@ -121,36 +183,86 @@ export default function SurveyCampaignForm() {
   };
 
   const handleStepChange = async (step: number) => {
+    // If we are in General Info, we must validate first to move to steps
+    if (currentStep === -1) {
+      if (step >= 0) {
+        await next();
+      }
+      return;
+    }
+
+    // If going back to general info
+    if (step < 0) {
+      setCurrentStep(-1);
+      return;
+    }
+
     // If going back, just go
     if (step < currentStep) {
       setCurrentStep(step);
       return;
     }
     
-    // If going forward, check if step is "performed" (reached) or is the immediate next
-    // But the user said: "nếu step đó chưa được thực hiện thì sẽ disable"
-    // Usually means you can't click steps > maxStepReached + 1
     if (step <= maxStepReached || isView) {
       setCurrentStep(step);
     } else if (step === currentStep + 1) {
-      // Allow clicking next step if current is valid
       await next();
     }
   };
 
-  const onFinish = (values: any) => {
-    message.success(isNew ? 'Đã tạo đợt khảo sát thành công!' : 'Đã cập nhật đợt khảo sát!');
-    router.push('/survey/campaigns');
+  const onFinish = async (values: any) => {
+    try {
+      setIsSubmitting(true);
+      const { range, ...rest } = values;
+      
+      const requestData: SurveyCampaignRequest = {
+        ...rest,
+        code: values.code || `CAM-${Date.now()}`, // Temporary code if not provided
+        workflowTemplateId: selectedWorkflowId!,
+        startDate: range[0].toISOString(),
+        endDate: range[1].toISOString(),
+        steps: workflowSteps.map((s, idx) => ({
+          stepIndex: idx,
+          stepName: s.title,
+          deadline: s.deadline?.toISOString(),
+          requiredDocuments: s.requiredDocuments || [],
+          configuration: s.configuration || {}
+        }))
+      };
+
+      let result;
+      if (isNew) {
+        result = await surveyCampaignService.create(requestData);
+        message.success('Đã tạo đợt khảo sát thành công!');
+      } else {
+        result = await surveyCampaignService.update(id, requestData);
+        message.success('Đã cập nhật đợt khảo sát!');
+      }
+
+      router.push(`/survey/campaigns/${result.id}?mode=view`);
+    } catch (error: any) {
+      message.error(error.message || 'Lỗi khi lưu dữ liệu');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const totalSteps = workflowSteps.length + 1;
+  const totalSteps = workflowSteps.length;
 
   const renderStepContent = (stepIndex: number) => {
-    if (stepIndex === 0) {
+    if (stepIndex === -1) {
       return (
         <div className="max-w-3xl mx-auto py-6">
           <Row gutter={24}>
-            <Col span={24}>
+            <Col span={12}>
+              <Form.Item
+                name="code"
+                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Mã đợt khảo sát</span>}
+              >
+                <Input placeholder="Tự động sinh nếu để trống" className="h-11 rounded-xl" disabled={isView} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
               <Form.Item
                 name="name"
                 label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Tên đợt khảo sát</span>}
@@ -166,7 +278,7 @@ export default function SurveyCampaignForm() {
                 rules={[{ required: true, message: 'Vui lòng chọn chương trình' }]}
               >
                 <Select placeholder="Chọn chương trình đào tạo" className="h-11" disabled={isView}>
-                  {MOCK_PROGRAMS.map(p => (
+                  {programs.map(p => (
                     <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
                   ))}
                 </Select>
@@ -184,7 +296,7 @@ export default function SurveyCampaignForm() {
                   onChange={handleWorkflowChange}
                   disabled={isView || !isNew}
                 >
-                  {MOCK_WORKFLOWS.map(w => (
+                  {workflows.map(w => (
                     <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>
                   ))}
                 </Select>
@@ -212,7 +324,7 @@ export default function SurveyCampaignForm() {
       );
     }
 
-    const currentWfStep = workflowSteps[stepIndex - 1];
+    const currentWfStep = workflowSteps[stepIndex];
     if (currentWfStep) {
       return (
         <div className="max-w-4xl mx-auto py-6">
@@ -223,7 +335,7 @@ export default function SurveyCampaignForm() {
               </div>
               <div>
                 <Title level={4} className="!mb-0 text-blue-900">{currentWfStep.title}</Title>
-                <Text type="secondary" className="text-sm">{currentWfStep.description}</Text>
+                <Text type="secondary" className="text-sm">{currentWfStep.description || 'Không có mô tả chi tiết'}</Text>
               </div>
             </div>
           </Card>
@@ -232,19 +344,22 @@ export default function SurveyCampaignForm() {
              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                 <Title level={5} className="flex items-center gap-2 mb-4">
                   <Users className="w-4 h-4 text-slate-400" />
-                  Gán người phụ trách
+                  Quy định thực hiện (Theo quy trình)
                 </Title>
-                <Select 
-                  mode="multiple" 
-                  placeholder="Chọn người phụ trách bước này" 
-                  className="w-full"
-                  defaultValue={isView ? ['user-1'] : []}
-                  disabled={isView}
-                >
-                  <Select.Option value="user-1">Nguyễn Văn A - Quản trị viên</Select.Option>
-                  <Select.Option value="user-2">Trần Thị B - Trưởng bộ môn</Select.Option>
-                  <Select.Option value="user-3">Lê Văn C - Giảng viên</Select.Option>
-                </Select>
+                <Row gutter={24}>
+                  <Col span={12}>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Người thực hiện</Text>
+                    <Tag color="blue" className="text-sm px-3 py-1 rounded-full">
+                       {roles.find(r => r.code === currentWfStep.configuration?.performerRole)?.name || 'Mọi thành viên'}
+                    </Tag>
+                  </Col>
+                  <Col span={12}>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Người kiểm duyệt</Text>
+                    <Tag color="orange" className="text-sm px-3 py-1 rounded-full">
+                       {roles.find(r => r.code === currentWfStep.configuration?.approverRole)?.name || 'Chưa quy định'}
+                    </Tag>
+                  </Col>
+                </Row>
              </div>
 
              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
@@ -252,7 +367,16 @@ export default function SurveyCampaignForm() {
                   <FileText className="w-4 h-4 text-slate-400" />
                   Tài liệu/Biểu mẫu yêu cầu
                 </Title>
-                <Checkbox.Group className="flex flex-col gap-3" disabled={isView} defaultValue={isView ? ['doc-1'] : []}>
+                <Checkbox.Group 
+                  className="flex flex-col gap-3" 
+                  disabled={isView} 
+                  value={currentWfStep.requiredDocuments}
+                  onChange={(checkedValues) => {
+                    const newSteps = [...workflowSteps];
+                    newSteps[stepIndex].requiredDocuments = checkedValues;
+                    setWorkflowSteps(newSteps);
+                  }}
+                >
                   <Checkbox value="doc-1">Kế hoạch chi tiết đợt khảo sát</Checkbox>
                   <Checkbox value="doc-2">Danh sách sinh viên/cựu sinh viên</Checkbox>
                   <Checkbox value="doc-3">Quyết định thành lập hội đồng</Checkbox>
@@ -264,7 +388,17 @@ export default function SurveyCampaignForm() {
                    <Calendar className="w-4 h-4 text-slate-400" />
                    Hạn chót hoàn thành (Deadline)
                 </Title>
-                <DatePicker className="w-full h-11 rounded-xl" disabled={isView} placeholder="Chọn ngày hạn chót" />
+                <DatePicker 
+                  className="w-full h-11 rounded-xl" 
+                  disabled={isView} 
+                  placeholder="Chọn ngày hạn chót" 
+                  value={currentWfStep.deadline}
+                  onChange={(date) => {
+                    const newSteps = [...workflowSteps];
+                    newSteps[stepIndex].deadline = date;
+                    setWorkflowSteps(newSteps);
+                  }}
+                />
              </div>
           </div>
         </div>
@@ -272,6 +406,48 @@ export default function SurveyCampaignForm() {
     }
 
     return <Empty description="Không có dữ liệu quy trình" />;
+  };
+
+  const renderCampaignHeader = () => {
+    const data = !isNew ? campaignData : form.getFieldsValue();
+    const programName = data?.programName || programs.find(p => p.id === data?.programId)?.name || '---';
+    const workflowName = data?.workflowTemplateName || workflows.find(w => w.id === data?.workflowTemplateId || w.id === data?.workflowId)?.name || '---';
+
+    return (
+      <div className="bg-slate-50/80 px-12 py-6 border-b border-slate-100">
+        <Row gutter={[32, 16]}>
+          <Col span={8}>
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Chương trình đào tạo</Text>
+            <Text className="text-slate-700 font-semibold flex items-center gap-2">
+               <Info size={14} className="text-blue-500" />
+               {programName}
+            </Text>
+          </Col>
+          <Col span={8}>
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Mẫu quy trình</Text>
+            <Text className="text-slate-700 font-semibold flex items-center gap-2">
+               <Settings size={14} className="text-purple-500" />
+               {workflowName}
+            </Text>
+          </Col>
+          <Col span={8}>
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Thời gian hiệu lực</Text>
+            <Text className="text-slate-700 font-semibold flex items-center gap-2">
+               <Calendar size={14} className="text-emerald-500" />
+               {data?.startDate ? `${dayjs(data.startDate).format('DD/MM/YYYY')} - ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
+            </Text>
+          </Col>
+        </Row>
+        {data?.description && (
+          <div className="mt-4 pt-4 border-t border-slate-100/50">
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Mô tả chi tiết</Text>
+            <Paragraph className="!mb-0 text-slate-600 text-sm italic">
+              "{data.description}"
+            </Paragraph>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -297,7 +473,7 @@ export default function SurveyCampaignForm() {
           <div className="h-6 w-[1px] bg-slate-200" />
           <div>
             <Title level={2} className="!mb-0 !text-slate-800 tracking-tight">
-              {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? `Chi tiết: ${MOCK_CAMPAIGNS[id]?.name}` : `Chỉnh sửa: ${MOCK_CAMPAIGNS[id]?.name}`)}
+              {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? `Chi tiết: ${campaignData?.name}` : `Chỉnh sửa: ${campaignData?.name}`)}
             </Title>
             <Paragraph type="secondary" className="!mb-0 text-slate-500 font-medium">
               {isNew ? 'Khởi tạo đợt khảo sát và gán quy trình thực hiện' : 'Theo dõi và quản lý thông tin đợt khảo sát'}
@@ -307,33 +483,40 @@ export default function SurveyCampaignForm() {
         {!isView && (
           <Button
             type="primary"
-            icon={<Save size={18} />}
+            icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
             onClick={() => form.submit()}
+            disabled={isSubmitting}
             className="rounded-xl px-8 h-11 font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-100 border-none transition-all"
           >
-            Lưu dữ liệu
+            {isSubmitting ? 'Đang lưu...' : 'Lưu dữ liệu'}
           </Button>
         )}
       </div>
 
-      <Card className="shadow-sm border-slate-200 rounded-3xl overflow-hidden min-h-[600px]" styles={{ body: { padding: 0 } }}>
-        <div className="px-12 pt-10 pb-8 bg-white border-b border-slate-50">
-          <Steps 
-            current={currentStep} 
-            onChange={handleStepChange}
-            className="premium-steps"
-            items={[
-              { 
-                title: 'Thông tin chung',
-                status: currentStep === 0 ? 'process' : 'wait'
-              },
-              ...workflowSteps.map((s, idx) => ({
-                title: s.title,
-                status: currentStep === idx + 1 ? 'process' : 'wait'
-              }))
-            ]}
-          />
-        </div>
+      <Card className="shadow-sm border-slate-200 rounded-3xl overflow-hidden min-h-[600px] relative" styles={{ body: { padding: 0 } }}>
+        {isLoading && (
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-3xl">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <Text className="text-slate-500 font-medium">Đang tải dữ liệu...</Text>
+            </div>
+          </div>
+        )}
+        {currentStep >= 0 && renderCampaignHeader()}
+        
+        {workflowSteps.length > 0 && (
+          <div className="px-12 pt-10 pb-8 bg-white border-b border-slate-50">
+            <Steps 
+              current={currentStep} 
+              onChange={handleStepChange}
+              className="premium-steps"
+              items={workflowSteps.map((s, idx) => ({
+                  title: s.title,
+                  status: currentStep === idx ? 'process' : 'wait'
+              }))}
+            />
+          </div>
+        )}
 
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={isView} className="px-12 py-2">
            {renderStepContent(currentStep)}
@@ -341,7 +524,7 @@ export default function SurveyCampaignForm() {
 
         <div className="p-8 border-t border-slate-100 flex justify-between bg-slate-50/30">
           <Button
-            disabled={currentStep === 0}
+            disabled={currentStep === -1 || (!isNew && currentStep === 0)}
             onClick={prev}
             icon={<ArrowLeft size={16} />}
             className="h-11 px-6 rounded-xl flex items-center"
@@ -354,9 +537,9 @@ export default function SurveyCampaignForm() {
               type="primary"
               onClick={next}
               className="h-11 px-8 rounded-xl flex items-center gap-2 bg-blue-600 shadow-md"
-              disabled={currentStep === 0 && !selectedWorkflowId}
+              disabled={currentStep === -1 && !selectedWorkflowId}
             >
-              Tiếp tục <ArrowRight size={16} />
+              {currentStep === -1 ? 'Thiết lập quy trình' : 'Tiếp tục'} <ArrowRight size={16} />
             </Button>
           ) : (
             !isView && (

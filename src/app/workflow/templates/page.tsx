@@ -3,13 +3,13 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
-import { 
-  Typography, Card, Button, Space, Breadcrumb, Table, Tag, 
-  Input, Row, Col, Tooltip, Modal, App as AntdApp, Switch 
+import {
+  Typography, Card, Button, Space, Breadcrumb, Table, Tag,
+  Input, Row, Col, Tooltip, Modal, App as AntdApp, Switch
 } from 'antd';
-import { 
-  Plus, Search, Eye, Edit, Trash2, 
-  MoreHorizontal, FileCode, Clock, CheckCircle2, 
+import {
+  Plus, Search, Eye, Edit, Trash2,
+  MoreHorizontal, FileCode, Clock, CheckCircle2,
   AlertCircle, History
 } from 'lucide-react';
 import type { ColumnsType } from 'antd/es/table';
@@ -113,9 +113,9 @@ export default function WorkflowTemplatesListPage() {
       render: (status, record) => (
         <div className="flex items-center gap-3">
           {getStatusTag(status)}
-          <Switch 
-            size="small" 
-            checked={(status || 'ACTIVE').toUpperCase() === 'ACTIVE'} 
+          <Switch
+            size="small"
+            checked={(status || 'ACTIVE').toUpperCase() === 'ACTIVE'}
             onChange={(checked) => handleStatusChange(record.id, checked)}
           />
         </div>
@@ -140,9 +140,9 @@ export default function WorkflowTemplatesListPage() {
       render: (_, record) => (
         <Space size="middle">
           <Tooltip title="Xem chi tiết">
-            <Button 
-              type="text" 
-              icon={<Eye size={18} className="text-blue-500" />} 
+            <Button
+              type="text"
+              icon={<Eye size={18} className="text-blue-500" />}
               onClick={() => router.push(`/workflow/templates/${record.id}`)}
               className="hover:bg-blue-50"
             />
@@ -170,9 +170,9 @@ export default function WorkflowTemplatesListPage() {
               Quản lý danh sách các luồng quy trình nghiệp vụ đã được định nghĩa
             </Paragraph>
           </div>
-          <Button 
-            type="primary" 
-            icon={<Plus size={18} />} 
+          <Button
+            type="primary"
+            icon={<Plus size={18} />}
             onClick={() => router.push('/workflow/templates/new')}
             className="rounded-xl px-6 h-11 font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 border-none"
           >
@@ -193,13 +193,13 @@ export default function WorkflowTemplatesListPage() {
             </Col>
           </Row>
 
-          <Table 
-            columns={columns as any} 
-            dataSource={data.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()) || i.code.toLowerCase().includes(searchText.toLowerCase()))} 
+          <Table
+            columns={columns as any}
+            dataSource={data.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()) || i.code.toLowerCase().includes(searchText.toLowerCase()))}
             rowKey="id"
             loading={loading}
             className="workflow-table"
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
+            pagination={{ pageSize: 10, placement: ['bottomEnd'] }}
           />
         </Card>
 

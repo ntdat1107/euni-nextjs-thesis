@@ -9,52 +9,57 @@ import {
 } from 'antd';
 import {
   Plus, Search, Eye, Edit3, Trash2,
-  Clock, CheckCircle2, AlertCircle, FileText
+  Clock, CheckCircle2, AlertCircle, FileText, Loader2
 } from 'lucide-react';
+import { surveyCampaignService, SurveyCampaignResponse } from '@/services/surveyCampaignService';
+import { Modal, message } from 'antd';
+import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Paragraph, Text } = Typography;
 
-interface SurveyCampaign {
-  id: string;
-  name: string;
-  programName: string;
-  workflowName: string;
-  status: 'ACTIVE' | 'DRAFT' | 'CLOSED';
-  createdAt: string;
-}
-
-const MOCK_DATA: SurveyCampaign[] = [
-  {
-    id: 'CAM-001',
-    name: 'Khảo sát CTĐT CNTT 2026 - Đợt 1',
-    programName: 'Công nghệ thông tin',
-    workflowName: 'Quy trình đánh giá chuẩn đầu ra',
-    status: 'ACTIVE',
-    createdAt: '2026-05-10T10:00:00Z',
-  },
-  {
-    id: 'CAM-002',
-    name: 'Khảo sát CTĐT Kinh tế 2026',
-    programName: 'Kinh tế đầu tư',
-    workflowName: 'Quy trình lấy ý kiến sinh viên',
-    status: 'DRAFT',
-    createdAt: '2026-05-11T09:30:00Z',
-  },
-  {
-    id: 'CAM-003',
-    name: 'Đánh giá chương trình Ngôn ngữ Anh',
-    programName: 'Ngôn ngữ Anh',
-    workflowName: 'Quy trình đánh giá định kỳ',
-    status: 'CLOSED',
-    createdAt: '2026-04-20T14:15:00Z',
-  },
-];
+// Mock data removed
 
 export default function SurveyCampaignsPage() {
   const router = useRouter();
   const [searchText, setSearchText] = useState('');
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [campaigns, setCampaigns] = useState<SurveyCampaignResponse[]>([]);
+
+  const fetchCampaigns = async () => {
+    try {
+      setLoading(true);
+      const data = await surveyCampaignService.getAll();
+      setCampaigns(data);
+    } catch (error) {
+      message.error('Lỗi khi tải danh sách đợt khảo sát');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchCampaigns();
+  }, []);
+
+  const handleDelete = (id: string) => {
+    Modal.confirm({
+      title: 'Xác nhận xóa',
+      content: 'Bạn có chắc chắn muốn xóa đợt khảo sát này? Hành động này không thể hoàn tác.',
+      okText: 'Xóa',
+      okType: 'danger',
+      cancelText: 'Hủy',
+      onOk: async () => {
+        try {
+          await surveyCampaignService.delete(id);
+          message.success('Đã xóa đợt khảo sát');
+          fetchCampaigns();
+        } catch (error) {
+          message.error('Lỗi khi xóa đợt khảo sát');
+        }
+      }
+    });
+  };
 
   const getStatusTag = (status: string) => {
     switch (status) {
@@ -69,7 +74,7 @@ export default function SurveyCampaignsPage() {
     }
   };
 
-  const columns: ColumnsType<SurveyCampaign> = [
+  const columns: ColumnsType<SurveyCampaignResponse> = [
     {
       title: 'Đợt khảo sát',
       dataIndex: 'name',
@@ -89,8 +94,8 @@ export default function SurveyCampaignsPage() {
     },
     {
       title: 'Quy trình áp dụng',
-      dataIndex: 'workflowName',
-      key: 'workflowName',
+      dataIndex: 'workflowTemplateName',
+      key: 'workflowTemplateName',
       render: (text) => (
         <div className="flex items-center gap-2 text-blue-600">
           <FileText size={14} />
@@ -108,9 +113,10 @@ export default function SurveyCampaignsPage() {
       title: 'Ngày tạo',
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: 150,
       render: (text) => (
-        <Text type="secondary" className="text-xs italic">
-          {new Date(text).toLocaleDateString('vi-VN')}
+        <Text className="text-[13px] text-slate-500 font-medium">
+          {dayjs(text).format('DD/MM/YYYY')}
         </Text>
       ),
     },
@@ -124,26 +130,21 @@ export default function SurveyCampaignsPage() {
             <Button
               type="text"
               icon={<Eye size={18} className="text-blue-500" />}
-              onClick={() => router.push(`/survey/campaigns/${record.id}`)}
+              onClick={() => router.push(`/survey/campaigns/${record.id}?mode=view`)}
               className="hover:bg-blue-50"
             />
           </Tooltip>
-          <Tooltip title="Chỉnh sửa">
-            <Button
-              type="text"
-              icon={<Edit3 size={18} className="text-amber-500" />}
-              onClick={() => router.push(`/survey/campaigns/${record.id}?mode=edit`)}
-              className="hover:bg-amber-50"
-            />
-          </Tooltip>
-          <Tooltip title="Xóa">
-            <Button
-              type="text"
-              danger
-              icon={<Trash2 size={18} />}
-              className="hover:bg-rose-50"
-            />
-          </Tooltip>
+          {record.status === 'DRAFT' && (
+            <Tooltip title="Xóa bản nháp">
+              <Button
+                type="text"
+                danger
+                icon={<Trash2 size={18} />}
+                onClick={() => handleDelete(record.id)}
+                className="hover:bg-rose-50"
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
     },
@@ -192,11 +193,11 @@ export default function SurveyCampaignsPage() {
 
           <Table
             columns={columns as any}
-            dataSource={MOCK_DATA.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()))}
+            dataSource={campaigns.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()))}
             rowKey="id"
             loading={loading}
             className="campaign-table"
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
+            pagination={{ pageSize: 10, placement: ['bottomRight'] }}
           />
         </Card>
       </div>
