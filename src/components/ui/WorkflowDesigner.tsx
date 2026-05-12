@@ -2,32 +2,90 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
+import BpmnViewer from 'bpmn-js/lib/NavigatedViewer';
 import camundaModdleDescriptor from 'camunda-bpmn-moddle/resources/camunda.json';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
-import { Card, Button, Space, Drawer, Form, Select, Input, Typography, Divider, Tooltip, Tag, App } from 'antd';
-import { Settings, Play, Download, Trash2, Plus, Upload, Minus } from 'lucide-react';
+import { Card, Button, Space, Drawer, Form, Select, Input, Typography, Divider, Tooltip, Tag, App, Switch, Alert } from 'antd';
+import { Settings, Play, Download, Trash2, Plus, Upload, Minus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { rbacService, Role } from '@/services/rbacService';
 import workflowService from '@/services/workflowService';
+import { XMLParser } from 'fast-xml-parser';
 
 const { Title, Text } = Typography;
+
+// --- HARDCODED CONSTANTS ---
+const SCREEN_CODES = [
+  { value: 'DASHBOARD', label: 'Bảng điều khiển (DASHBOARD)' },
+  { value: 'REQUEST_FORM', label: 'Biểu mẫu yêu cầu (REQUEST_FORM)' },
+  { value: 'REVIEW_STEP_1', label: 'Thẩm định hồ sơ (REVIEW_STEP_1)' },
+  { value: 'REVIEW_STEP_2', label: 'Phê duyệt lãnh đạo (REVIEW_STEP_2)' },
+  { value: 'APPROVAL_FINAL', label: 'Ban hành kết quả (APPROVAL_FINAL)' },
+  { value: 'REVISION_REQUIRED', label: 'Bổ sung thông tin (REVISION_REQUIRED)' },
+];
+
+const BUTTON_COLORS = [
+  { value: 'primary', label: 'Xanh dương (Duyệt)', color: '#1677ff' },
+  { value: 'success', label: 'Xanh lá (Hoàn thành)', color: '#52c41a' },
+  { value: 'warning', label: 'Vàng (Bổ sung)', color: '#faad14' },
+  { value: 'danger', label: 'Đỏ (Từ chối)', color: '#ff4d4f' },
+  { value: 'default', label: 'Xám (Quay lại)', color: '#d9d9d9' }
+];
+
+const ACTION_TYPES = [
+  { value: 'CONFIRM', label: 'Xác nhận (Tiến tới)' },
+  { value: 'RETURN', label: 'Trả về (Quay lui)' },
+  { value: 'CUSTOM', label: 'Tùy chỉnh' },
+];
 
 const DEFAULT_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" name="Bắt đầu" />
+    <bpmn:startEvent id="StartEvent_1" name="Bắt đầu">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Activity_1" name="Nhiệm vụ mới">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1" name="Kết thúc">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="EndEvent_1" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
         <dc:Bounds x="173" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="171" y="145" width="40" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1_di" bpmnElement="Activity_1">
+        <dc:Bounds x="260" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="422" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="419" y="145" width="43" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="209" y="120" />
+        <di:waypoint x="260" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="360" y="120" />
+        <di:waypoint x="422" y="120" />
+      </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
 
-function DesignerInner({ 
+function DesignerInner({
   initialXml = DEFAULT_DIAGRAM,
   onChange,
   onSave,
@@ -35,7 +93,7 @@ function DesignerInner({
   workflowCode,
   workflowName,
   workflowDescription
-}: { 
+}: {
   initialXml?: string;
   onChange?: (xml: string) => void;
   onSave?: (xml: string) => void;
@@ -46,7 +104,7 @@ function DesignerInner({
 }) {
   const { message } = App.useApp();
   const containerRef = useRef<HTMLDivElement>(null);
-  const modelerRef = useRef<BpmnModeler | null>(null);
+  const modelerRef = useRef<any>(null);
   const [selectedElement, setSelectedElement] = useState<any>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -56,6 +114,26 @@ function DesignerInner({
   const isDraggingRef = useRef(false);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const diagramLoadedRef = useRef(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  const [isReady, setIsReady] = useState(false);
+  const isInitialRender = useRef(true);
+
+  // Đồng bộ prop initialXml khi nó thay đổi từ phía ngoài (ví dụ: sau khi fetch API)
+  useEffect(() => {
+    if (initialXml && modelerRef.current && isReady) {
+      // Chỉ tự động load lại nếu XML từ prop khác với XML hiện tại trong Ref
+      // và đây không phải là do chính chúng ta vừa save xong
+      if (initialXml !== lastXmlRef.current) {
+        lastXmlRef.current = initialXml;
+        modelerRef.current.importXML(initialXml).then(() => {
+          const canvas = modelerRef.current?.get('canvas') as any;
+          if (canvas) canvas.zoom('fit-viewport');
+          validateWorkflow(initialXml);
+        });
+      }
+    }
+  }, [initialXml, isReady]);
 
   useEffect(() => {
     setLocalIsReadOnly(readOnly);
@@ -73,37 +151,62 @@ function DesignerInner({
     fetchRoles();
   }, []);
 
+  // Hàm validate cấu hình 1 Start 1 End
+  const validateWorkflow = (xml: string) => {
+    const errors: string[] = [];
+    const parser = new XMLParser({ ignoreAttributes: false });
+    const jsonObj = parser.parse(xml);
+    
+    const process = jsonObj['bpmn:definitions']?.['bpmn:process'];
+    if (!process) return ['Sơ đồ không hợp lệ'];
+
+    const startEvents = Array.isArray(process['bpmn:startEvent']) ? process['bpmn:startEvent'] : (process['bpmn:startEvent'] ? [process['bpmn:startEvent']] : []);
+    const endEvents = Array.isArray(process['bpmn:endEvent']) ? process['bpmn:endEvent'] : (process['bpmn:endEvent'] ? [process['bpmn:endEvent']] : []);
+
+    if (endEvents.length !== 1) errors.push(`Quy trình phải có DUY NHẤT 1 điểm kết thúc (Hiện có: ${endEvents.length})`);
+
+    setValidationErrors(errors);
+    return errors.length === 0;
+  };
+
+  // Logic xử lý lăn chuột: Chỉ zoom khi nhấn Ctrl, còn lại để trình duyệt cuộn trang tự nhiên
+  const handleWheelAction = (e: React.WheelEvent | WheelEvent) => {
+    const canvas = modelerRef.current?.get('canvas') as any;
+    if (!canvas) return;
+
+    if (e.ctrlKey) {
+      e.preventDefault();
+      canvas.zoom(canvas.zoom() * (e.deltaY > 0 ? 0.8 : 1.2));
+    }
+    // Không preventDefault ở đây để trình duyệt cuộn trang "ngoài" bình thường
+  };
+
   useEffect(() => {
     if (!containerRef.current) return;
+    setIsReady(false);
 
-    const modeler = new BpmnModeler({
+    // Khởi tạo Modeler hoặc Viewer tùy theo chế độ
+    const ModelerClass = localIsReadOnly ? BpmnViewer : BpmnModeler;
+    const modeler = new ModelerClass({
       container: containerRef.current,
-      keyboard: {},
-      zoomScroll: {
-        enabled: false
-      },
-      moddleExtensions: {
-        camunda: camundaModdleDescriptor
-      },
-      additionalModules: localIsReadOnly ? [
-        {
-          paletteProvider: ['value', null],
-          contextPadProvider: ['value', null]
-        }
-      ] : []
+      keyboard: localIsReadOnly ? {} : { bindTo: window },
+      moddleExtensions: { camunda: camundaModdleDescriptor },
+      zoomScroll: { enabled: false },
     });
 
     modelerRef.current = modeler;
 
     const render = async () => {
-      if (!modelerRef.current || diagramLoadedRef.current || !initialXml) return;
+      if (!modelerRef.current) return;
+      
+      const xmlToLoad = lastXmlRef.current || initialXml;
+      
       try {
-        await modelerRef.current.importXML(initialXml);
-        diagramLoadedRef.current = true;
+        await modelerRef.current.importXML(xmlToLoad);
+        setIsReady(true);
         const canvas = modelerRef.current.get('canvas') as any;
-        if (canvas && canvas._container && canvas._container.clientWidth > 0) {
-          canvas.zoom('fit-viewport');
-        }
+        if (canvas?._container?.clientWidth > 0) canvas.zoom('fit-viewport');
+        validateWorkflow(xmlToLoad);
       } catch (err) {
         console.error('Error rendering BPMN:', err);
       }
@@ -111,58 +214,52 @@ function DesignerInner({
 
     const timer = setTimeout(render, 50);
 
-    // Sự kiện thay đổi lựa chọn
     modeler.on('selection.changed', (e: any) => {
-      // Nếu đang trong quá trình kéo thả, không cập nhật UI để tránh lag
       if (isDraggingRef.current) return;
-
       const selection = e.newSelection;
-      
-      // CHỈ hiển thị popup khi chọn DUY NHẤT 1 phần tử
       if (!selection || selection.length !== 1) {
         setSelectedElement(null);
         return;
       }
 
       const element = selection[0];
-      
-      // Nếu là nhãn (label), không hiện Panel
-      if (element && (element.type === 'label' || element.labelTarget)) {
+      // Bỏ qua Edge (SequenceFlow) và Label - không hiển thị popup cấu hình
+      if (element?.type === 'label' || element?.labelTarget || element?.type === 'bpmn:SequenceFlow') {
         setSelectedElement(null);
         return;
       }
 
-      // Chỉ cập nhật nếu thực sự thay đổi phần tử để tránh re-render thừa
       setSelectedElement((current: any) => (current?.id === element?.id ? current : element));
-      if (element) {
-        const businessObject = element.businessObject;
-        form.setFieldsValue({
-          name: businessObject.name || '',
-          id: businessObject.id,
-          role: businessObject.get('camunda:candidateGroups') || '', 
-          description: businessObject.get('camunda:description') || '',
-          dueDate: businessObject.get('camunda:dueDate') || '',
-          actionType: businessObject.get('camunda:actionType') || 'none',
-          buttonColor: businessObject.get('camunda:buttonColor') || 'primary',
-          camundaClass: businessObject.get('camunda:class') || ''
-        });
-      }
+      
+      const bo = element.businessObject;
+      form.setFieldsValue({
+        name: bo.name || '',
+        id: bo.id,
+        screenCode: bo.get('camunda:formKey') || '',
+        role: bo.get('camunda:candidateGroups') || '',
+        actionType: bo.get('camunda:actionType') || 'CONFIRM',
+        buttonColor: bo.get('camunda:buttonColor') || 'primary',
+        showConfirmation: bo.get('camunda:showConfirmation') === 'true',
+        confirmationMessage: bo.get('camunda:confirmationMessage') || 'Bạn có chắc chắn muốn thực hiện hành động này?',
+        requireComment: bo.get('camunda:requireComment') === 'true',
+        performerRole: bo.get('camunda:performerRole') || '',
+        approverRole: bo.get('camunda:approverRole') || '',
+      });
     });
 
     const handleChanged = async () => {
-      if (!localIsReadOnly && onChange && modelerRef.current) {
-        // Debounce: Chỉ lưu sau khi người dùng ngừng thao tác 500ms
+      if (!localIsReadOnly && modelerRef.current) {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        
         saveTimerRef.current = setTimeout(async () => {
           try {
             const result = await modelerRef.current?.saveXML({ format: true });
-            if (result?.xml && result.xml !== lastXmlRef.current) {
+            if (result?.xml) {
               lastXmlRef.current = result.xml;
-              onChange(result.xml);
+              validateWorkflow(result.xml);
+              if (onChange) onChange(result.xml);
             }
           } catch (err) {
-            console.error('Error saving XML on change:', err);
+            console.error('Error saving XML:', err);
           }
         }, 500);
       }
@@ -171,68 +268,19 @@ function DesignerInner({
     modeler.on('commandStack.changed', handleChanged);
 
     const eventBus = modeler.get('eventBus') as any;
-
-    // Thay vì chặn 'directEditing.activate' (gây kẹt tool), ta chặn 'element.dblclick' 
-    // để ngăn người dùng mở trình soạn thảo bằng cách nhấp đúp.
     eventBus.on('element.dblclick', 1000, (e: any) => {
-      // Cho phép di chuyển label nhưng không cho sửa text
-      if (e.element.type === 'label' || e.element.labelTarget || ['bpmn:Task', 'bpmn:UserTask', 'bpmn:SequenceFlow'].includes(e.element.type)) {
-        return false; // Chặn dblclick -> không kích hoạt soạn thảo
-      }
-    });
-
-    // Chặn hiện Context Pad (nút xóa) CHỈ cho các nhãn văn bản
-    eventBus.on('contextPad.create', (e: any) => {
-      // Thêm kiểm tra e.element để tránh lỗi undefined
-      if (e?.element?.type === 'label') {
+      if (['bpmn:Task', 'bpmn:UserTask', 'bpmn:SequenceFlow', 'bpmn:StartEvent', 'bpmn:EndEvent'].includes(e.element.type)) {
         return false;
       }
     });
 
-    // Manual Ctrl + Wheel zoom
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        if (!modelerRef.current) return;
-        const canvas = modelerRef.current.get('canvas') as any;
-        const zoom = canvas.zoom();
-        const delta = e.deltaY > 0 ? 0.8 : 1.2;
-        canvas.zoom(zoom * delta);
-      }
-    };
-
-    // Theo dõi trạng thái kéo thả để tối ưu hiệu năng UI
-    eventBus.on('drag.start', () => {
-      isDraggingRef.current = true;
-    });
-
-    eventBus.on('drag.end', () => {
-      isDraggingRef.current = false;
-      
-      // Hoãn cập nhật state một chút để không xung đột với các sự kiện click/drag tiếp theo của Modeler
-      setTimeout(() => {
-        if (modelerRef.current) {
-          const selection = modelerRef.current.get('selection') as any;
-          const element = selection.get()[0];
-          
-          if (element && !(element.type === 'label' || element.labelTarget)) {
-            // Chỉ cập nhật nếu element thực sự thay đổi hoặc chưa có element nào được chọn
-            setSelectedElement((current: any) => (current?.id === element.id ? current : element));
-          }
-        }
-      }, 50);
-    });
-
     const container = containerRef.current;
-    if (container) {
-      container.addEventListener('wheel', handleWheel, { passive: false });
-    }
+    const handleWheelRaw = (e: WheelEvent) => handleWheelAction(e);
+    if (container) container.addEventListener('wheel', handleWheelRaw, { passive: false });
 
     return () => {
       clearTimeout(timer);
-      if (container) {
-        container.removeEventListener('wheel', handleWheel);
-      }
+      if (container) container.removeEventListener('wheel', handleWheelRaw);
       if (modelerRef.current) {
         modelerRef.current.off('commandStack.changed', handleChanged);
         modelerRef.current.destroy();
@@ -241,104 +289,50 @@ function DesignerInner({
     };
   }, [localIsReadOnly]);
 
-  // Tự động đồng bộ bản Draft mỗi 30 giây (Đã đưa ra ngoài useEffect chính)
+  // Tự động đóng drawer khi chuyển sang chế độ xem
   useEffect(() => {
-    if (localIsReadOnly || !workflowCode) return;
-
-    const controller = new AbortController();
-
-    const interval = setInterval(async () => {
-      if (!modelerRef.current) return;
-      try {
-        const result = await modelerRef.current.saveXML({ format: true });
-        if (result?.xml) {
-          await workflowService.syncDraft({
-            code: workflowCode,
-            name: workflowName || 'Untitled Workflow',
-            description: workflowDescription,
-            xmlContent: result.xml
-          }, controller.signal);
-        }
-      } catch (err: any) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
-        console.error('Failed to auto-sync draft:', err);
-      }
-    }, 30000);
-
-    return () => {
-      clearInterval(interval);
-      controller.abort();
-    };
-  }, [workflowCode, workflowName, workflowDescription, localIsReadOnly]);
+    if (localIsReadOnly) {
+      setIsDrawerOpen(false);
+    }
+  }, [localIsReadOnly]);
 
   const handleSaveProperties = () => {
     if (!modelerRef.current || !selectedElement || localIsReadOnly) return;
-
     const values = form.getFieldsValue();
     const modeling = modelerRef.current.get('modeling') as any;
 
-    modeling.updateProperties(selectedElement, {
-      name: values.name,
-      'camunda:candidateGroups': values.role,
-      'camunda:description': values.description,
-      'camunda:dueDate': values.dueDate,
-      'camunda:actionType': values.actionType,
-      'camunda:buttonColor': values.buttonColor,
-      'camunda:class': values.camundaClass
-    });
+    const props: any = { name: values.name };
 
-    message.success('Đã cập nhật cấu hình bước');
+    if (['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type)) {
+      props['camunda:formKey'] = values.screenCode;
+      props['camunda:performerRole'] = values.performerRole;
+      props['camunda:approverRole'] = values.approverRole;
+    }
+
+    if (selectedElement.type === 'bpmn:SequenceFlow') {
+      props['camunda:candidateGroups'] = values.role;
+      props['camunda:actionType'] = values.actionType;
+      props['camunda:buttonColor'] = values.buttonColor;
+      props['camunda:showConfirmation'] = String(!!values.showConfirmation);
+      props['camunda:confirmationMessage'] = values.confirmationMessage;
+      props['camunda:requireComment'] = String(!!values.requireComment);
+
+      if (values.actionType === 'CONFIRM') props.name = 'Xác nhận';
+      if (values.actionType === 'RETURN') props.name = 'Trả về';
+    }
+
+    modeling.updateProperties(selectedElement, props);
+    message.success('Đã cập nhật cấu hình');
     setIsDrawerOpen(false);
   };
 
-  const handleZoom = (type: 'in' | 'out' | 'fit') => {
-    if (!modelerRef.current) return;
-    const canvas = modelerRef.current.get('canvas') as any;
-    if (type === 'in') canvas.zoom(canvas.zoom() * 1.2);
-    else if (type === 'out') canvas.zoom(canvas.zoom() * 0.8);
-    else canvas.zoom('fit-viewport');
-  };
-
-  const handleImport = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.bpmn, .xml';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = async (event: any) => {
-        const xmlContent = event.target.result;
-        if (modelerRef.current) {
-          try {
-            await modelerRef.current.importXML(xmlContent);
-            message.success('Đã nhập quy trình từ file thành công');
-          } catch (err) {
-            message.error('File không đúng định dạng BPMN 2.0');
-          }
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  };
-
-
-  const handleExport = async () => {
-    if (!modelerRef.current) return;
+  const handleExportConsole = async () => {
+    if (!modelerRef.current || !isReady) return;
     try {
       const result = await modelerRef.current.saveXML({ format: true });
-      if (result?.xml) {
-        const blob = new Blob([result.xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'workflow-template.bpmn';
-        a.click();
-        URL.revokeObjectURL(url);
-        message.success('Đã xuất file sơ đồ thành công');
-      }
+      if (result?.xml) console.log(result.xml);
     } catch (err) {
-      message.error('Lỗi khi xuất file');
+      console.error('Export error:', err);
     }
   };
 
@@ -347,295 +341,220 @@ function DesignerInner({
       <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between z-20 shadow-sm">
         <Space separator={<Divider orientation="vertical" className="bg-slate-200 h-6" />}>
           <div className="flex flex-col">
-            <Text strong className="text-[13px] leading-tight">Sơ đồ Quy trình</Text>
-            <Text type="secondary" className="text-[10px] leading-tight">Chuẩn BPMN 2.0</Text>
+            <Text strong className="text-[13px] leading-tight">Thiết kế Quy trình</Text>
+            <Text type="secondary" className="text-[10px] leading-tight">Workflow Logic v2</Text>
           </div>
-          
-          {!readOnly && (
-            <div className="bg-slate-100 p-1 rounded-lg border border-slate-200">
-              <Space size={2}>
-                <Button 
-                  size="small" 
-                  type={!localIsReadOnly ? "text" : "default"} 
-                  className={`text-xs px-3 rounded-md transition-all ${!localIsReadOnly ? 'bg-white shadow-sm font-semibold text-blue-600' : 'text-slate-500'}`}
-                  onClick={() => setLocalIsReadOnly(false)}
-                >
-                  Thiết kế
-                </Button>
-                <Button 
-                  size="small" 
-                  type={localIsReadOnly ? "text" : "default"} 
-                  className={`text-xs px-3 rounded-md transition-all ${localIsReadOnly ? 'bg-white shadow-sm font-semibold text-blue-600' : 'text-slate-500'}`}
-                  onClick={() => setLocalIsReadOnly(true)}
-                >
-                  Xem thử
-                </Button>
-              </Space>
-            </div>
-          )}
 
-          {!localIsReadOnly && (
-            <div className="bg-blue-50 px-3 py-1 rounded-full border border-blue-100 text-[11px] text-blue-600 flex items-center gap-2 animate-in fade-in zoom-in-95">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-              Kéo thả từ thanh công cụ bên trái
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {validationErrors.length === 0 ? (
+              <Tag color="success" icon={<CheckCircle2 size={12} />} className="m-0 text-[11px] py-0.5 px-2 rounded-full border-green-100">Hợp lệ</Tag>
+            ) : (
+              <Tooltip title={validationErrors.join(', ')}>
+                <Tag color="error" icon={<AlertCircle size={12} />} className="m-0 text-[11px] py-0.5 px-2 rounded-full border-red-100">Lỗi cấu hình</Tag>
+              </Tooltip>
+            )}
+          </div>
         </Space>
 
         <Space size="small">
-          <Tooltip title="Tải file sơ đồ từ máy tính lên">
-            <Button 
-              icon={<Upload size={14} />} 
-              size="small" 
-              onClick={handleImport}
-              disabled={localIsReadOnly}
-              className="flex items-center gap-2 text-xs border-slate-200"
-            >
-              Nhập XML
-            </Button>
-          </Tooltip>
-          <Tooltip title="Tải file sơ đồ về máy">
-            <Button 
-              icon={<Download size={14} />} 
-              onClick={handleExport}
+          {!readOnly && (
+            <Button
               size="small"
-              className="flex items-center gap-2 text-xs border-slate-200"
+              type={!localIsReadOnly ? "primary" : "default"}
+              onClick={() => setLocalIsReadOnly(!localIsReadOnly)}
+              className="text-xs"
+              loading={!isReady}
             >
-              Xuất XML
+              {localIsReadOnly ? 'Chế độ chỉnh sửa' : 'Xem trước'}
             </Button>
-          </Tooltip>
-          
+          )}
+          <Button 
+            icon={<Download size={14} />} 
+            size="small" 
+            onClick={handleExportConsole} 
+            disabled={!isReady}
+          />
         </Space>
       </div>
 
       <div className="w-full grow bg-[#fcfdfe] relative designer-container">
         <div ref={containerRef} className="w-full h-full" />
-        
-        <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
-          <Button icon={<Plus size={16} />} onClick={() => handleZoom('in')} className="shadow-md border-slate-200 bg-white" />
-          <Button icon={<span className="text-xs">1:1</span>} onClick={() => handleZoom('fit')} className="shadow-md border-slate-200 bg-white" />
-          <Button icon={<Minus size={16} />} onClick={() => handleZoom('out')} className="shadow-md border-slate-200 bg-white" />
-        </div>
+
+        {validationErrors.length > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-md px-4">
+            <Alert
+              message="Yêu cầu cấu hình"
+              description={validationErrors.map((e, i) => <div key={i}>• {e}</div>)}
+              type="error"
+              showIcon
+              className="shadow-lg border-red-200"
+            />
+          </div>
+        )}
 
         {selectedElement && (
-          <div className="absolute top-6 right-6 bg-white shadow-xl border border-slate-200 p-0 rounded-xl z-10 w-72 animate-in fade-in slide-in-from-top-4 overflow-hidden">
+          <div className="absolute top-6 right-6 bg-white shadow-xl border border-slate-200 p-0 rounded-xl z-10 w-72 animate-in fade-in slide-in-from-top-4 overflow-hidden"
+            onWheel={(e) => handleWheelAction(e)}>
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <Text type="secondary" className="text-[10px] uppercase font-bold tracking-wider">Cấu hình hiện tại</Text>
+              <Text type="secondary" className="text-[10px] uppercase font-bold tracking-wider">Thông tin bước</Text>
               <Tag color="blue" className="mr-0 text-[10px] uppercase font-medium">{selectedElement.type.split(':')[1]}</Tag>
             </div>
-            
-            <div className="p-4 flex flex-col gap-4">
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <Text type="secondary" className="text-[11px]">Mã bước</Text>
-                    <Text className="text-[12px] font-mono text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 w-fit">
-                      {selectedElement.businessObject.id}
-                    </Text>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Text type="secondary" className="text-[11px]">Loại xử lý</Text>
-                    <Tag color="default" className="m-0 text-[10px] w-fit border-slate-200">
-                      {['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type) ? 'Người dùng' : 
-                       selectedElement.type === 'bpmn:ServiceTask' ? 'Tự động' : 
-                       selectedElement.type === 'bpmn:SequenceFlow' ? 'Chuyển bước' : 'Hệ thống'}
-                    </Tag>
-                  </div>
-                </div>
 
-                <div className="flex flex-col gap-1">
-                  <Text type="secondary" className="text-[11px]">Tên hiển thị</Text>
-                  <Text strong className="text-[13px] leading-tight text-slate-800">
-                    {selectedElement.businessObject.name || <span className="text-slate-400 font-normal italic">Chưa đặt tên</span>}
-                  </Text>
-                </div>
-
-                {['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type) && (
-                  <>
-                    <div className="flex flex-col gap-1">
-                      <Text type="secondary" className="text-[11px]">Hành động yêu cầu</Text>
-                      <Tag color="orange" className="m-0 text-[11px] w-fit">
-                        {selectedElement.businessObject.get('camunda:actionType') === 'upload' ? 'Upload tài liệu' :
-                         selectedElement.businessObject.get('camunda:actionType') === 'form' ? 'Điền Form' :
-                         selectedElement.businessObject.get('camunda:actionType') === 'both' ? 'Upload & Điền Form' : 'Chỉ xem'}
-                      </Tag>
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <Text type="secondary" className="text-[11px]">Nhóm/Role thực hiện</Text>
-                      <div className="flex items-center gap-1.5">
-                        <Tag color="purple" className="m-0 text-[11px] font-medium border-purple-100">
-                          {roles.find(r => r.code === selectedElement.businessObject.get('camunda:candidateGroups'))?.name || selectedElement.businessObject.get('camunda:candidateGroups') || 'Hệ thống/Tự động'}
-                        </Tag>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {selectedElement.type === 'bpmn:SequenceFlow' && (
-                  <div className="flex flex-col gap-1">
-                    <Text type="secondary" className="text-[11px]">Đích đến</Text>
-                    <Text className="text-[12px] text-slate-700">
-                      ➡️ {selectedElement.businessObject.targetRef?.name || selectedElement.businessObject.targetRef?.id}
-                    </Text>
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-1">
-                  <Text type="secondary" className="text-[11px]">Thời hạn xử lý (Giờ)</Text>
-                  <Text className="text-[12px] text-slate-700 flex items-center gap-1">
-                    <Play size={10} className="text-blue-500" />
-                    {selectedElement.businessObject.get('camunda:dueDate') ? `${selectedElement.businessObject.get('camunda:dueDate')} giờ` : 'Không giới hạn'}
-                  </Text>
-                </div>
-
-                {selectedElement.businessObject.get('camunda:description') && (
-                  <div className="flex flex-col gap-1">
-                    <Text type="secondary" className="text-[11px]">Mô tả công việc</Text>
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      <Text className="text-[12px] text-slate-600 italic block leading-relaxed">
-                        "{selectedElement.businessObject.get('camunda:description')}"
-                      </Text>
-                    </div>
-                  </div>
-                )}
+            <div className="p-4 flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <Text type="secondary" className="text-[11px]">Tên hiển thị</Text>
+                <Text strong className="text-[13px] text-slate-800">{selectedElement.businessObject.name || 'N/A'}</Text>
               </div>
 
+              {['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type) && (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <Text type="secondary" className="text-[11px]">Màn hình hiển thị</Text>
+                    <Tag color="cyan" className="w-fit text-[11px]">{SCREEN_CODES.find(s => s.value === selectedElement.businessObject.get('camunda:formKey'))?.label || 'Chưa cấu hình'}</Tag>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Text type="secondary" className="text-[11px]">Người thực hiện</Text>
+                    <Tag color="blue" className="w-fit text-[11px]">{roles.find(r => r.code === selectedElement.businessObject.get('camunda:performerRole'))?.name || 'Chưa gán'}</Tag>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Text type="secondary" className="text-[11px]">Người duyệt</Text>
+                    <Tag color="orange" className="w-fit text-[11px]">{roles.find(r => r.code === selectedElement.businessObject.get('camunda:approverRole'))?.name || 'Chưa gán'}</Tag>
+                  </div>
+                </>
+              )}
+
+              {selectedElement.type === 'bpmn:SequenceFlow' && (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <Text type="secondary" className="text-[11px]">Loại nút</Text>
+                    <Tag color="purple" className="w-fit text-[11px]">{ACTION_TYPES.find(a => a.value === selectedElement.businessObject.get('camunda:actionType'))?.label || 'Xác nhận'}</Tag>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Text type="secondary" className="text-[11px]">Quyền thực hiện</Text>
+                    <Tag color="orange" className="w-fit text-[11px]">{roles.find(r => r.code === selectedElement.businessObject.get('camunda:candidateGroups'))?.name || 'Chưa gán role'}</Tag>
+                  </div>
+                </>
+              )}
+
               {!localIsReadOnly && (
-                <Button 
-                  block 
-                  type="primary" 
-                  icon={<Settings size={14} />} 
-                  onClick={() => setIsDrawerOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-700 h-9 rounded-lg mt-2 shadow-sm"
-                >
-                  Chỉnh sửa cấu hình
-                </Button>
+                <Button block type="primary" size="small" onClick={() => setIsDrawerOpen(true)} className="mt-2">Cấu hình</Button>
               )}
             </div>
           </div>
         )}
-
       </div>
 
       <Drawer
-        title="Cấu hình Chi tiết Bước"
+        title={localIsReadOnly ? "Chi tiết Quy trình (Chế độ xem)" : "Cấu hình Quy trình"}
         placement="right"
         onClose={() => setIsDrawerOpen(false)}
         open={isDrawerOpen}
-        size="large"
-        forceRender={true}
-        extra={
-          <Button type="primary" onClick={() => setIsDrawerOpen(false)} className="rounded-lg">
-            Hoàn tất
-          </Button>
-        }
-        className="workflow-config-drawer"
+        width={400}
+        styles={{ body: { overflow: 'hidden', padding: 0 } }}
+        extra={!localIsReadOnly && <Button type="primary" onClick={handleSaveProperties}>Lưu thay đổi</Button>}
       >
-        <Form 
-          form={form} 
-          layout="vertical" 
-          className="mt-2"
-          initialValues={{ buttonColor: 'primary' }}
-        >
-          {selectedElement && (
-            <>
-              <Form.Item label="ID Bước" name="id">
-                <Input disabled />
-              </Form.Item>
-              
-              <Form.Item 
-                label="Tên bước" 
-                name="name" 
-                rules={[{ required: true, message: 'Vui lòng nhập tên bước' }]}
-              >
-                <Input placeholder="VD: Thẩm định hồ sơ" />
-              </Form.Item>
+        <div className="h-full w-full overflow-hidden p-6" onWheel={(e) => handleWheelAction(e)}>
+          <Form form={form} layout="vertical" disabled={localIsReadOnly}>
+            {selectedElement && (
+              <>
+                <Form.Item label="ID (Hệ thống)" name="id"><Input disabled /></Form.Item>
 
-              {/* Cấu hình cho User Task hoặc Task mặc định */}
-              {['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type) && (
-                <>
-                  <Form.Item label="Nhóm/Role thực hiện" name="role">
-                    <Select placeholder="Chọn Role có quyền thực hiện bước này">
-                      {roles.map(role => (
-                        <Select.Option key={role.code} value={role.code}>
-                          {role.name} ({role.code})
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
+                {/* CONFIG FOR NODES (STATES) */}
+                {['bpmn:UserTask', 'bpmn:Task'].includes(selectedElement.type) && (
+                  <>
+                    <Form.Item label="Tên trạng thái" name="name" rules={[{ required: true }]}>
+                      <Input placeholder="VD: Đang thẩm định" />
+                    </Form.Item>
+                    <Form.Item label="Màn hình tích hợp" name="screenCode" rules={[{ required: true }]}>
+                      <Select placeholder="Chọn màn hình frontend">
+                        {SCREEN_CODES.map(s => <Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
+                      </Select>
+                    </Form.Item>
+                    <Form.Item label="Người thực hiện" name="performerRole">
+                      <Select placeholder="Chọn role người thực hiện" allowClear>
+                        {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
+                      </Select>
+                    </Form.Item>
+                    <Form.Item label="Người duyệt" name="approverRole">
+                      <Select placeholder="Chọn role người duyệt" allowClear>
+                        {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
+                      </Select>
+                    </Form.Item>
+                  </>
+                )}
 
-                  <Form.Item label="Hành động bắt buộc" name="actionType">
-                    <Select placeholder="User cần làm gì ở bước này?">
-                      <Select.Option value="none">Chỉ xem và quyết định</Select.Option>
-                      <Select.Option value="upload">Yêu cầu Upload tài liệu</Select.Option>
-                      <Select.Option value="form">Yêu cầu điền Form thông tin</Select.Option>
-                      <Select.Option value="both">Cả Upload và điền Form</Select.Option>
-                    </Select>
-                  </Form.Item>
+                {/* CONFIG FOR EDGES (BUTTONS) */}
+                {selectedElement.type === 'bpmn:SequenceFlow' && (
+                  <>
+                    <Form.Item label="Loại hành động" name="actionType">
+                      <Select>
+                        {ACTION_TYPES.map(a => <Select.Option key={a.value} value={a.value}>{a.label}</Select.Option>)}
+                      </Select>
+                    </Form.Item>
 
-                  <Form.Item label="Mô tả công việc" name="description">
-                    <Input.TextArea rows={4} placeholder="Mô tả chi tiết những gì role cần làm ở bước này..." />
-                  </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.actionType !== cur.actionType}>
+                      {({ getFieldValue }) => getFieldValue('actionType') === 'CUSTOM' && (
+                        <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
+                          <Form.Item label="Tên nút bấm" name="name" rules={[{ required: true }]}>
+                            <Input placeholder="VD: Gửi duyệt" />
+                          </Form.Item>
+                          <Form.Item label="Màu sắc nút" name="buttonColor">
+                            <Select>
+                              {BUTTON_COLORS.map(c => <Select.Option key={c.value} value={c.value}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                                  {c.label}
+                                </div>
+                              </Select.Option>)}
+                            </Select>
+                          </Form.Item>
+                        </div>
+                      )}
+                    </Form.Item>
 
-                  <Divider />
-                  <Title level={5}>Cấu hình Nâng cao</Title>
-                  <Form.Item label="Thời hạn xử lý (Giờ)" name="dueDate">
-                    <Input type="number" placeholder="24" />
-                  </Form.Item>
-                </>
-              )}
+                    <Form.Item label="Role được phép thực hiện" name="role" rules={[{ required: true }]}>
+                      <Select placeholder="Chọn role">
+                        {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
+                      </Select>
+                    </Form.Item>
 
-              {/* Cấu hình cho Sequence Flow (Mũi tên) */}
-              {selectedElement.type === 'bpmn:SequenceFlow' && (
-                <>
-                  <Form.Item 
-                    label="Tên nút bấm hành động" 
-                    name="name" 
-                    help="Tên này sẽ hiển thị thành Button ở màn hình xử lý (VD: Duyệt, Từ chối)"
-                  >
-                    <Input placeholder="VD: Duyệt hồ sơ" />
-                  </Form.Item>
-                  <Form.Item label="Màu sắc nút" name="buttonColor">
-                    <Select>
-                      <Select.Option value="primary">Xanh dương (Duyệt/Tiếp tục)</Select.Option>
-                      <Select.Option value="danger">Đỏ (Từ chối/Hủy)</Select.Option>
-                      <Select.Option value="default">Xám (Bổ sung/Quay lại)</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </>
-              )}
+                    <Divider className="my-2" />
+                    <div className="flex items-center justify-between mb-4">
+                      <Text>Yêu cầu xác nhận</Text>
+                      <Form.Item name="showConfirmation" valuePropName="checked" noStyle><Switch size="small" /></Form.Item>
+                    </div>
 
-              {/* Cấu hình cho Service Task hoặc loại khác */}
-              {selectedElement.type === 'bpmn:ServiceTask' && (
-                <Form.Item label="Class xử lý tự động" name="camundaClass">
-                  <Input placeholder="com.euni.workflow.service.AutoExecuteDelegate" />
-                </Form.Item>
-              )}
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.showConfirmation !== cur.showConfirmation}>
+                      {({ getFieldValue }) => getFieldValue('showConfirmation') && (
+                        <Form.Item label="Nội dung xác nhận" name="confirmationMessage">
+                          <Input.TextArea rows={2} />
+                        </Form.Item>
+                      )}
+                    </Form.Item>
 
-              {!['bpmn:UserTask', 'bpmn:SequenceFlow', 'bpmn:ServiceTask'].includes(selectedElement.type) && (
-                <Form.Item label="Tên đối tượng" name="name">
-                    <Input placeholder="Nhập tên..." />
-                </Form.Item>
-              )}
-            </>
-          )}
-        </Form>
+                    <div className="flex items-center justify-between">
+                      <Text>Bắt buộc nhập ý kiến</Text>
+                      <Form.Item name="requireComment" valuePropName="checked" noStyle><Switch size="small" /></Form.Item>
+                    </div>
+                  </>
+                )}
+
+                {/* FOR START/END EVENTS */}
+                {['bpmn:StartEvent', 'bpmn:EndEvent'].includes(selectedElement.type) && (
+                  <Form.Item label="Tên hiển thị" name="name"><Input /></Form.Item>
+                )}
+              </>
+            )}
+          </Form>
+        </div>
       </Drawer>
 
       <style jsx global>{`
-        .designer-container .bjs-powered-by {
-          display: none;
-        }
+        .designer-container .bjs-powered-by { display: none; }
         .designer-container .djs-palette {
           top: 20px !important;
           left: 20px !important;
           border-radius: 12px !important;
-          border: 1px solid #e2e8f0 !important;
-          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
-        }
-        .designer-container .djs-context-pad {
-          border-radius: 8px !important;
           border: 1px solid #e2e8f0 !important;
           box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
         }
