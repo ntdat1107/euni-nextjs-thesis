@@ -197,7 +197,7 @@ export default function SurveyCampaignsPage() {
             rowKey="id"
             loading={loading}
             className="campaign-table"
-            pagination={{ pageSize: 10, placement: ['bottomRight'] }}
+            pagination={{ pageSize: 10, position: ['bottomRight'] }}
           />
         </Card>
       </div>

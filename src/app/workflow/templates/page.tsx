@@ -199,7 +199,7 @@ export default function WorkflowTemplatesListPage() {
             rowKey="id"
             loading={loading}
             className="workflow-table"
-            pagination={{ pageSize: 10, placement: ['bottomEnd'] }}
+            pagination={{ pageSize: 10, position: ['bottomRight'] }}
           />
         </Card>
 
