@@ -7,19 +7,36 @@ import {
   HelpCircle,
   Menu
 } from 'lucide-react';
-import { Input, Badge, Avatar } from 'antd';
+import { Input, Badge, Avatar, Dropdown } from 'antd';
+import { User, LogOut } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { authService } from '@/services/authService';
+import { roleCache } from '@/lib/roleCache';
+import { Role } from '@/services/rbacService';
 import Link from 'next/link';
 
 export default function Topbar() {
+  const router = useRouter();
   const [isClient, setIsClient] = React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<any>(null);
+  const [allRoles, setAllRoles] = React.useState<Role[]>([]);
 
   React.useEffect(() => {
     setIsClient(true);
-    const localUserStr = localStorage.getItem('euni_user');
-    if (localUserStr) {
-      setCurrentUser(JSON.parse(localUserStr));
-    }
+    const initData = async () => {
+      try {
+        const [rolesList] = await Promise.all([roleCache.getRoles()]);
+        setAllRoles(rolesList);
+        
+        const localUserStr = localStorage.getItem('euni_user');
+        if (localUserStr) {
+          setCurrentUser(JSON.parse(localUserStr));
+        }
+      } catch (error) {
+        console.error('Topbar data init failed:', error);
+      }
+    };
+    initData();
   }, []);
 
   return (
@@ -48,29 +65,57 @@ export default function Topbar() {
 
         <div className="h-6 w-px bg-slate-200 mx-3" />
 
-        <Link href="/settings" className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-lg hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200 group min-h-[46px]">
-          {isClient && currentUser ? (
-            <>
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900 leading-tight group-hover:text-edu-primary transition-colors">{currentUser.fullName}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{currentUser.roles.includes('ADMIN') ? 'Quản trị viên' : 'Giảng viên'}</p>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: 'profile',
+                label: 'Hồ sơ người dùng',
+                icon: <User className="w-4 h-4" />,
+                onClick: () => router.push('/profile'),
+              },
+              {
+                type: 'divider',
+              },
+              {
+                key: 'logout',
+                label: 'Đăng xuất',
+                icon: <LogOut className="w-4 h-4" />,
+                danger: true,
+                onClick: () => authService.logout(),
+              },
+            ],
+          }}
+          trigger={['click']}
+          placement="bottomRight"
+          overlayClassName="min-w-[200px]"
+        >
+          <div className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-lg hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200 group min-h-[46px] cursor-pointer">
+            {isClient && currentUser ? (
+              <>
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-bold text-slate-900 leading-tight group-hover:text-edu-primary transition-colors">{currentUser.fullName}</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">
+                    {roleCache.getRoleLabel(allRoles, currentUser.roles)}
+                  </p>
+                </div>
+                <Avatar 
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
+                  className="border border-slate-200 bg-white"
+                  size={36}
+                />
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:block space-y-1 text-right">
+                  <div className="h-3 w-20 bg-slate-100 animate-pulse rounded ml-auto" />
+                  <div className="h-2 w-16 bg-slate-100 animate-pulse rounded ml-auto" />
+                </div>
+                <div className="w-9 h-9 rounded-full bg-slate-100 animate-pulse" />
               </div>
-              <Avatar 
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
-                className="border border-slate-200 bg-white"
-                size={36}
-              />
-            </>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:block space-y-1 text-right">
-                <div className="h-3 w-20 bg-slate-100 animate-pulse rounded ml-auto" />
-                <div className="h-2 w-16 bg-slate-100 animate-pulse rounded ml-auto" />
-              </div>
-              <div className="w-9 h-9 rounded-full bg-slate-100 animate-pulse" />
-            </div>
-          )}
-        </Link>
+            )}
+          </div>
+        </Dropdown>
       </div>
     </div>
   );

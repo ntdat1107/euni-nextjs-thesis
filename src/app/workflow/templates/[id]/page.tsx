@@ -17,51 +17,12 @@ import workflowService, { WorkflowTemplateResponse, WorkflowDraftResponse } from
 
 const { Title, Paragraph, Text } = Typography;
 
-const DEFAULT_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" name="Bắt đầu">
-      <bpmn:outgoing>Flow_1</bpmn:outgoing>
-    </bpmn:startEvent>
-    <bpmn:userTask id="Activity_1" name="Nhiệm vụ mới">
-      <bpmn:incoming>Flow_1</bpmn:incoming>
-      <bpmn:outgoing>Flow_2</bpmn:outgoing>
-    </bpmn:userTask>
-    <bpmn:endEvent id="EndEvent_1" name="Kết thúc">
-      <bpmn:incoming>Flow_2</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
-    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="EndEvent_1" />
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
-      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="173" y="102" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="171" y="145" width="40" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_1_di" bpmnElement="Activity_1">
-        <dc:Bounds x="260" y="80" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="422" y="102" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="419" y="145" width="43" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
-        <di:waypoint x="209" y="120" />
-        <di:waypoint x="260" y="120" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
-        <di:waypoint x="360" y="120" />
-        <di:waypoint x="422" y="120" />
-      </bpmndi:BPMNEdge>
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
+const DEFAULT_FLOW = JSON.stringify({
+  type: 'linear',
+  steps: [],
+  nodes: [],
+  edges: []
+});
 
 export default function WorkflowEditorPage() {
   const { message, modal } = AntdApp.useApp();
@@ -71,7 +32,7 @@ export default function WorkflowEditorPage() {
   const isNew = id === 'new';
 
   const [mode, setMode] = useState<'view' | 'edit'>(isNew ? 'edit' : 'view');
-  const [xml, setXml] = useState(DEFAULT_DIAGRAM);
+  const [flowData, setFlowData] = useState(DEFAULT_FLOW);
   const [form] = Form.useForm();
   const [template, setTemplate] = useState<WorkflowTemplateResponse | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -88,7 +49,7 @@ export default function WorkflowEditorPage() {
     try {
       const data = await workflowService.getById(id, signal);
       setTemplate(data);
-      setXml(data.xmlContent);
+      setFlowData(data.jsonContent);
       form.setFieldsValue({
         name: data.name,
         code: data.code,
@@ -146,7 +107,7 @@ export default function WorkflowEditorPage() {
         okText: 'Tiếp tục bản nháp',
         cancelText: 'Dùng bản chính thức',
         onOk: () => {
-          setXml(draft.xmlContent);
+          setFlowData(draft.jsonContent);
           form.setFieldsValue({
             name: draft.name,
             code: draft.code,
@@ -156,7 +117,7 @@ export default function WorkflowEditorPage() {
           message.success('Đã tải bản nháp');
         },
         onCancel: () => {
-          if (template) setXml(template.xmlContent);
+          if (template) setFlowData(template.jsonContent);
           setMode('edit');
         },
       });
@@ -170,7 +131,7 @@ export default function WorkflowEditorPage() {
       const values = await form.validateFields();
       const result = await workflowService.saveOfficial({
         ...values,
-        xmlContent: xml,
+        jsonContent: flowData,
         status: values.status || 'ACTIVE'
       });
       message.success('Đã lưu quy trình thành công');
@@ -185,7 +146,7 @@ export default function WorkflowEditorPage() {
         
         // Cập nhật state local ngay lập tức từ kết quả trả về
         setTemplate(result);
-        setXml(result.xmlContent);
+        setFlowData(result.jsonContent);
         form.setFieldsValue({
           name: result.name,
           code: result.code,
@@ -212,8 +173,8 @@ export default function WorkflowEditorPage() {
     }
   };
 
-  const handleXmlChange = useCallback((newXml: string) => {
-    setXml(newXml);
+  const handleFlowChange = useCallback((newData: string) => {
+    setFlowData(newData);
   }, []);
 
   const watchedName = Form.useWatch('name', form);
@@ -399,7 +360,7 @@ export default function WorkflowEditorPage() {
                       </div>
                     ),
                   },
-                  ...(!isHistoryView ? [{
+                  ...(!isHistoryView && !isNew && mode === 'view' ? [{
                     key: 'history',
                     label: (
                       <Space className="py-2">
@@ -502,10 +463,10 @@ export default function WorkflowEditorPage() {
               <div className="h-[750px]">
                 <WorkflowDesigner
                   key={id}
-                  initialXml={xml}
-                  onChange={handleXmlChange}
-                  onSave={(newXml: React.SetStateAction<string>) => {
-                    setXml(newXml);
+                  initialData={flowData}
+                  onChange={handleFlowChange}
+                  onSave={(newData: string) => {
+                    setFlowData(newData);
                     setMode('view');
                   }}
                   readOnly={mode === 'view'}

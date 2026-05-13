@@ -104,6 +104,57 @@ export default function SurveyCampaignForm() {
     }
   }, [currentStep, maxStepReached]);
 
+  useEffect(() => {
+    if (isNew && selectedWorkflowId && workflows.length > 0) {
+      const wf = workflows.find(w => w.id === selectedWorkflowId);
+      if (wf && wf.jsonContent) {
+        try {
+          const parsed = JSON.parse(wf.jsonContent);
+          const nodes = parsed.nodes || [];
+          const edges = parsed.edges || [];
+
+          const startNode = nodes.find((n: any) => n.type === 'start');
+          if (startNode) {
+            const steps: any[] = [];
+            let currentNodeId = startNode.id;
+            const visited = new Set<string>();
+
+            while (currentNodeId && !visited.has(currentNodeId)) {
+              visited.add(currentNodeId);
+
+              // Find outgoing edge (prefer CONFIRM type if multiple, but here we just take the first)
+              const outgoingEdge = edges.find((e: any) => e.source === currentNodeId);
+              if (!outgoingEdge) break;
+
+              const targetId = outgoingEdge.target;
+              const taskNode = nodes.find((n: any) => n.id === targetId && n.type === 'state');
+
+              if (taskNode) {
+                steps.push({
+                  title: taskNode.data.label || taskNode.id,
+                  description: '',
+                  configuration: {
+                    taskId: taskNode.id,
+                    performerRole: taskNode.data.performerRole || '',
+                    approverRole: taskNode.data.approverRole || '',
+                    screenCode: taskNode.data.screenCode || ''
+                  },
+                  deadline: null,
+                  requiredDocuments: []
+                });
+              }
+
+              currentNodeId = targetId;
+            }
+            setWorkflowSteps(steps);
+          }
+        } catch (error) {
+          console.error("Error parsing workflow JSON:", error);
+        }
+      }
+    }
+  }, [selectedWorkflowId, workflows, isNew]);
+
   const handleWorkflowChange = (value: string) => {
     setSelectedWorkflowId(value);
   };
@@ -114,67 +165,9 @@ export default function SurveyCampaignForm() {
         await form.validateFields();
       }
 
-      if (currentStep === -1 && selectedWorkflowId && isNew) {
-        const wf = workflows.find(w => w.id === selectedWorkflowId);
-        if (wf) {
-           const parser = new XMLParser({ 
-             ignoreAttributes: false, 
-             attributeNamePrefix: "",
-             removeNSPrefix: true // Simplify by removing bpmn:, camunda: prefixes
-           });
-           const jsonObj = parser.parse(wf.xmlContent);
-           const definitions = jsonObj.definitions;
-           const process = definitions?.process;
-           
-           if (process) {
-             // Helper to convert single objects to arrays
-             const toArray = (obj: any) => Array.isArray(obj) ? obj : (obj ? [obj] : []);
-             
-             const startEvents = toArray(process.startEvent);
-             const userTasks = [...toArray(process.userTask), ...toArray(process.task)];
-             const sequenceFlows = toArray(process.sequenceFlow);
-             
-             if (startEvents.length > 0) {
-               const steps: any[] = [];
-               let currentNodeId = startEvents[0].id;
-               const visited = new Set<string>();
-               
-               while (currentNodeId && !visited.has(currentNodeId)) {
-                 visited.add(currentNodeId);
-                 
-                 // Find outgoing flow from current node
-                 const outgoingFlow = sequenceFlows.find((f: any) => f.sourceRef === currentNodeId);
-                 if (!outgoingFlow) break;
-                 
-                 const targetId = outgoingFlow.targetRef;
-                 const task = userTasks.find((t: any) => t.id === targetId);
-                 
-                 if (task) {
-                   steps.push({
-                     title: task.name || task.id,
-                     description: task.documentation || '',
-                     configuration: {
-                       taskId: task.id,
-                       performerRole: task.performerRole || '',
-                       approverRole: task.approverRole || '',
-                       screenCode: task.formKey || ''
-                     },
-                     deadline: null,
-                     requiredDocuments: []
-                   });
-                 }
-                 
-                 currentNodeId = targetId;
-               }
-               setWorkflowSteps(steps);
-             }
-           }
-        }
-      }
-
       setCurrentStep(currentStep + 1);
     } catch (error) {
-       console.error('Validation error or parsing error:', error);
+       console.error('Validation error:', error);
     }
   };
 
@@ -217,10 +210,10 @@ export default function SurveyCampaignForm() {
       
       const requestData: SurveyCampaignRequest = {
         ...rest,
-        code: values.code || `CAM-${Date.now()}`, // Temporary code if not provided
+        code: values.code || `CAM-${Date.now()}`,
         workflowTemplateId: selectedWorkflowId!,
-        startDate: range[0].toISOString(),
-        endDate: range[1].toISOString(),
+        startDate: range?.[0] ? range[0].toISOString() : dayjs().toISOString(),
+        endDate: range?.[1] ? range[1].toISOString() : dayjs().add(1, 'month').toISOString(),
         steps: workflowSteps.map((s, idx) => ({
           stepIndex: idx,
           stepName: s.title,
@@ -258,6 +251,23 @@ export default function SurveyCampaignForm() {
               <Form.Item
                 name="code"
                 label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Mã đợt khảo sát</span>}
+                rules={[
+                  {
+                    validator: async (_, value) => {
+                      if (!value || !isNew) return Promise.resolve();
+                      try {
+                        const exists = await surveyCampaignService.checkCode(value);
+                        if (exists) {
+                          return Promise.reject('Mã đợt khảo sát này đã tồn tại!');
+                        }
+                      } catch (error) {
+                        // Ignore check error
+                      }
+                      return Promise.resolve();
+                    }
+                  }
+                ]}
+                validateTrigger="onBlur"
               >
                 <Input placeholder="Tự động sinh nếu để trống" className="h-11 rounded-xl" disabled={isView} />
               </Form.Item>
@@ -410,7 +420,9 @@ export default function SurveyCampaignForm() {
 
   const renderCampaignHeader = () => {
     const data = !isNew ? campaignData : form.getFieldsValue();
-    const programName = data?.programName || programs.find(p => p.id === data?.programId)?.name || '---';
+    const selectedProgram = programs.find(p => p.id === data?.programId);
+    const programName = data?.programName || selectedProgram?.name || '---';
+    const programCode = data?.programCode || selectedProgram?.code || '';
     const workflowName = data?.workflowTemplateName || workflows.find(w => w.id === data?.workflowTemplateId || w.id === data?.workflowId)?.name || '---';
 
     return (
@@ -420,7 +432,7 @@ export default function SurveyCampaignForm() {
             <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Chương trình đào tạo</Text>
             <Text className="text-slate-700 font-semibold flex items-center gap-2">
                <Info size={14} className="text-blue-500" />
-               {programName}
+               {programCode ? `[${programCode}] ` : ''}{programName}
             </Text>
           </Col>
           <Col span={8}>
@@ -488,7 +500,7 @@ export default function SurveyCampaignForm() {
             disabled={isSubmitting}
             className="rounded-xl px-8 h-11 font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-100 border-none transition-all"
           >
-            {isSubmitting ? 'Đang lưu...' : 'Lưu dữ liệu'}
+            {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Tạo đợt khảo sát' : 'Lưu dữ liệu')}
           </Button>
         )}
       </div>
@@ -508,11 +520,10 @@ export default function SurveyCampaignForm() {
           <div className="px-12 pt-10 pb-8 bg-white border-b border-slate-50">
             <Steps 
               current={currentStep} 
-              onChange={handleStepChange}
               className="premium-steps"
               items={workflowSteps.map((s, idx) => ({
                   title: s.title,
-                  status: currentStep === idx ? 'process' : 'wait'
+                  status: currentStep === idx ? 'process' : (currentStep > idx ? 'finish' : 'wait')
               }))}
             />
           </div>
@@ -522,37 +533,39 @@ export default function SurveyCampaignForm() {
            {renderStepContent(currentStep)}
         </Form>
 
-        <div className="p-8 border-t border-slate-100 flex justify-between bg-slate-50/30">
-          <Button
-            disabled={currentStep === -1 || (!isNew && currentStep === 0)}
-            onClick={prev}
-            icon={<ArrowLeft size={16} />}
-            className="h-11 px-6 rounded-xl flex items-center"
-          >
-            Quay lại
-          </Button>
-          
-          {currentStep < totalSteps - 1 ? (
+        {(!isNew || isView) && (
+          <div className="p-8 border-t border-slate-100 flex justify-between bg-slate-50/30">
             <Button
-              type="primary"
-              onClick={next}
-              className="h-11 px-8 rounded-xl flex items-center gap-2 bg-blue-600 shadow-md"
-              disabled={currentStep === -1 && !selectedWorkflowId}
+              disabled={currentStep === -1 || (!isNew && currentStep === 0)}
+              onClick={prev}
+              icon={<ArrowLeft size={16} />}
+              className="h-11 px-6 rounded-xl flex items-center"
             >
-              {currentStep === -1 ? 'Thiết lập quy trình' : 'Tiếp tục'} <ArrowRight size={16} />
+              Quay lại
             </Button>
-          ) : (
-            !isView && (
+            
+            {currentStep < totalSteps - 1 ? (
               <Button
                 type="primary"
-                onClick={() => form.submit()}
-                className="h-11 px-10 rounded-xl flex items-center gap-2 bg-emerald-600 shadow-md"
+                onClick={next}
+                className="h-11 px-8 rounded-xl flex items-center gap-2 bg-blue-600 shadow-md"
+                disabled={currentStep === -1 && !selectedWorkflowId}
               >
-                Hoàn tất <CheckCircle2 size={16} />
+                Tiếp tục <ArrowRight size={16} />
               </Button>
-            )
-          )}
-        </div>
+            ) : (
+              !isView && (
+                <Button
+                  type="primary"
+                  onClick={() => form.submit()}
+                  className="h-11 px-10 rounded-xl flex items-center gap-2 bg-emerald-600 shadow-md"
+                >
+                  Hoàn tất <CheckCircle2 size={16} />
+                </Button>
+              )
+            )}
+          </div>
+        )}
       </Card>
 
       <style jsx global>{`

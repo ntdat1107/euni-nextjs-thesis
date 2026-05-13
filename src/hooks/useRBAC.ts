@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rbacService, Role, Permission } from '@/services/rbacService';
+import { roleCache } from '@/lib/roleCache';
 import { App } from 'antd';
 
 export function useRBAC() {
@@ -21,6 +22,7 @@ export function useRBAC() {
   const createRoleMutation = useMutation({
     mutationFn: (role: Partial<Role>) => rbacService.createRole(role),
     onSuccess: () => {
+      roleCache.clearCache();
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       message.success('Tạo vai trò thành công');
     },
@@ -29,6 +31,7 @@ export function useRBAC() {
   const deleteRoleMutation = useMutation({
     mutationFn: (id: string) => rbacService.deleteRole(id),
     onSuccess: () => {
+      roleCache.clearCache();
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       message.success('Xóa vai trò thành công');
     },
@@ -54,6 +57,7 @@ export function useRBAC() {
     mutationFn: ({ roleId, permissionIds }: { roleId: string; permissionIds: string[] }) => 
       rbacService.updateRolePermissions(roleId, permissionIds),
     onSuccess: () => {
+      roleCache.clearCache();
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       message.success('Cập nhật quyền cho vai trò thành công');
     },

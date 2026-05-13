@@ -16,6 +16,7 @@ import type { ColumnsType } from 'antd/es/table';
 import workflowService, { WorkflowTemplateResponse } from '@/services/workflowService';
 import axios from 'axios';
 import { useEffect } from 'react';
+import WorkflowEditorModal from '@/components/workflow/WorkflowEditorModal';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -36,21 +37,24 @@ export default function WorkflowTemplatesListPage() {
   const [searchText, setSearchText] = useState('');
   const [data, setData] = useState<WorkflowTemplateResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const fetchData = async (signal?: AbortSignal) => {
+    try {
+      const result = await workflowService.getAll(signal);
+      setData(result);
+    } catch (error: any) {
+      if (axios.isCancel(error)) return;
+      message.error('Lỗi khi tải danh sách quy trình');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
-    const fetchData = async () => {
-      try {
-        const result = await workflowService.getAll(controller.signal);
-        setData(result);
-      } catch (error: any) {
-        if (axios.isCancel(error)) return;
-        message.error('Lỗi khi tải danh sách quy trình');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+    fetchData(controller.signal);
     return () => controller.abort();
   }, [message]);
 
@@ -173,7 +177,10 @@ export default function WorkflowTemplatesListPage() {
           <Button
             type="primary"
             icon={<Plus size={18} />}
-            onClick={() => router.push('/workflow/templates/new')}
+            onClick={() => {
+              setEditingId(null);
+              setIsModalOpen(true);
+            }}
             className="rounded-xl px-6 h-11 font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 border-none"
           >
             Tạo mới Quy trình
@@ -205,6 +212,16 @@ export default function WorkflowTemplatesListPage() {
 
       </div>
 
+      <WorkflowEditorModal
+        open={isModalOpen}
+        editingId={editingId}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={(id) => {
+          setIsModalOpen(false);
+          router.push(`/workflow/templates/${id}`);
+        }}
+      />
+
       <style jsx global>{`
         .workflow-table .ant-table-thead > tr > th {
           background: #f8fafc;
@@ -218,3 +235,4 @@ export default function WorkflowTemplatesListPage() {
     </AppShell>
   );
 }
+

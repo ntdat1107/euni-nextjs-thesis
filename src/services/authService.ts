@@ -21,5 +21,9 @@ export const authService = {
     if (typeof window !== 'undefined') {
       window.location.href = '/login';
     }
+  },
+
+  changePassword: async (data: any): Promise<void> => {
+    return api.post('/auth/change-password', data);
   }
 };

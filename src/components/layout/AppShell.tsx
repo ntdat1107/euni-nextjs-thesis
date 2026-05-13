@@ -101,8 +101,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const isInactive = currentUser?.status === 'Inactive';
       const needsPasswordChange = currentUser?.tokenVersion === 0;
       
-      if ((isInactive || needsPasswordChange) && pathname !== '/settings') {
-        router.push('/settings');
+      if ((isInactive || needsPasswordChange) && pathname !== '/change-password') {
+        router.push('/change-password');
       }
     }
   }, [isAuthenticated, pathname, router]);

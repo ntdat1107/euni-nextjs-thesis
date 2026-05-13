@@ -5,7 +5,7 @@ export interface WorkflowTemplateRequest {
   name: string;
   description?: string;
   status?: string;
-  xmlContent: string;
+  jsonContent: string;
 }
 
 export interface WorkflowTemplateResponse {
@@ -14,7 +14,7 @@ export interface WorkflowTemplateResponse {
   name: string;
   description?: string;
   status: string;
-  xmlContent: string;
+  jsonContent: string;
   version: number;
   isActive: boolean;
   createdAt: string;
@@ -29,7 +29,7 @@ export interface WorkflowDraftResponse {
   name: string;
   description?: string;
   status?: string;
-  xmlContent: string;
+  jsonContent: string;
   lastSavedAt: string;
 }
 
@@ -65,6 +65,10 @@ const workflowService = {
 
   getHistory: async (id: string, signal?: AbortSignal): Promise<WorkflowTemplateResponse[]> => {
     return api.get(`/workflow-templates/${id}/history`, { signal });
+  },
+  
+  checkCode: async (code: string, currentId?: string | null): Promise<boolean> => {
+    return api.get('/workflow-templates/check-code', { params: { code, currentId } });
   }
 };
 
