@@ -10,16 +10,13 @@ import {
   GraduationCap,
   BarChart3,
   Shield,
-  Settings,
   ChevronDown,
   ChevronLeft,
   Box,
   User,
-  LogOut,
-  TestTube
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button, Avatar } from 'antd';
+import { Button } from 'antd';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -49,6 +46,7 @@ const NAV_ITEMS: NavItemProps[] = [
     icon: GitBranch,
     children: [
       { id: 'workflow-templates', label: 'Mẫu quy trình', path: '/workflow/templates' },
+      { id: 'workflow-master-steps', label: 'Kho bước mẫu', path: '/workflow/master-steps' },
     ],
   },
   {
@@ -85,6 +83,12 @@ const NAV_ITEMS: NavItemProps[] = [
       { id: 'users', label: 'Người dùng', path: '/admin/users' },
       { id: 'rbac', label: 'Phân quyền', path: '/admin/rbac' },
     ],
+  },
+  {
+    id: 'profile',
+    label: 'Hồ sơ người dùng',
+    icon: User,
+    path: '/profile',
   },
 ];
 
@@ -277,59 +281,6 @@ export default function Sidebar({
         </ul>
       </nav>
 
-      {/* User Area */}
-      <div className="border-t border-slate-200 bg-white px-3 py-4 flex-shrink-0 space-y-2">
-        <Link
-          href="/settings"
-          prefetch={false}
-          onMouseDown={() => onNavigate?.('/settings')}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
-            isActive('/settings')
-              ? '!text-edu-primary bg-slate-50 font-bold'
-              : '!text-slate-600 hover:bg-slate-50 hover:!text-slate-900'
-          )}
-        >
-          <Settings className={cn('w-5 h-5 flex-shrink-0 transition-colors', isActive('/settings') ? '!text-edu-primary' : '!text-slate-400 group-hover:!text-slate-600')} />
-          {!collapsed && <span>Cài đặt hệ thống</span>}
-        </Link>
-
-        <div className="p-2 rounded-xl flex items-center gap-3 border border-slate-100 bg-slate-50/50 min-h-[56px]">
-          {isClient && currentUser ? (
-            <>
-              <Avatar
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
-                size={40}
-                className="border border-slate-200 flex-shrink-0"
-              />
-              {!collapsed && (
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate leading-tight">{currentUser.fullName}</p>
-                  <p className="text-[10px] text-slate-500 truncate font-medium mt-0.5">{currentUser.email}</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-3 w-full">
-              <div className="w-10 h-10 rounded-full bg-slate-200 animate-pulse" />
-              {!collapsed && (
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-20 bg-slate-200 animate-pulse rounded" />
-                  <div className="h-2 w-24 bg-slate-200 animate-pulse rounded" />
-                </div>
-              )}
-            </div>
-          )}
-          {!collapsed && (
-            <button
-              onClick={handleLogout}
-              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Collapse Toggle */}
       <button

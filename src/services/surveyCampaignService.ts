@@ -34,6 +34,7 @@ export interface SurveyCampaignResponse {
   name: string;
   description?: string;
   programId: string;
+  programCode?: string;
   programName?: string;
   workflowTemplateId: string;
   workflowTemplateName?: string;
@@ -62,5 +63,9 @@ export const surveyCampaignService = {
 
   delete: async (id: string): Promise<void> => {
     return api.delete(`/survey/campaigns/${id}`);
+  },
+  
+  checkCode: async (code: string): Promise<boolean> => {
+    return api.get(`/survey/campaigns/check-code?code=${code}`);
   }
 };
