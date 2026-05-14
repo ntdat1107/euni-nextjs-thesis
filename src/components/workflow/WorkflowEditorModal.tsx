@@ -15,7 +15,8 @@ import {
   Col, 
   Tooltip,
   App,
-  Switch
+  Switch,
+  Spin
 } from 'antd';
 import { 
   Plus, 
@@ -26,7 +27,8 @@ import {
   Settings,
   Layers,
   Info,
-  MousePointer2
+  MousePointer2,
+  AlertCircle
 } from 'lucide-react';
 import {
   DndContext,
@@ -51,10 +53,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import workflowService from '@/services/workflowService';
 import { rbacService, Role } from '@/services/rbacService';
+import { workflowDefinitionService, WorkflowStepDefinitionResponse } from '@/services/workflowDefinitionService';
 
 const { Title, Text, Paragraph } = Typography;
 
-import { MASTER_STEPS_DATA } from '@/constants/workflowConstants';
 import { SortableStepItem, WorkflowStep } from './SortableStepItem';
 
 interface WorkflowEditorModalProps {
@@ -70,7 +72,11 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [stepDefinitions, setStepDefinitions] = useState<WorkflowStepDefinitionResponse[]>([]);
   const [initialCode, setInitialCode] = useState<string>('');
+  const [showDraftConfirm, setShowDraftConfirm] = useState(false);
+  const [draftData, setDraftData] = useState<any>(null);
+  const [officialData, setOfficialData] = useState<any>(null);
 
   // dnd-kit sensors
   const sensors = useSensors(
@@ -85,15 +91,19 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   );
 
   useEffect(() => {
-    const fetchRoles = async () => {
+    const fetchData = async () => {
       try {
-        const data = await rbacService.getRoles();
-        setRoles(data);
+        const [rData, dData] = await Promise.all([
+          rbacService.getRoles(),
+          workflowDefinitionService.getAll()
+        ]);
+        setRoles(rData);
+        setStepDefinitions(dData);
       } catch (e) {
-        console.error('Failed to fetch roles');
+        console.error('Failed to fetch initial data');
       }
     };
-    if (open) fetchRoles();
+    if (open) fetchData();
   }, [open]);
 
   useEffect(() => {
@@ -108,33 +118,53 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   const loadWorkflowData = async (id: string) => {
     setLoading(true);
     try {
-      const res = await workflowService.getById(id);
-      form.setFieldsValue({
-        name: res.name,
-        code: res.code,
-        version: res.version,
-        description: res.description
-      });
-      setInitialCode(res.code);
+      let res = await workflowService.getById(id);
+      
+      // Nếu id này là của bản nháp, mặc định lấy dữ liệu bản nháp để chỉnh sửa
+      if (res.status === 'DRAFT') {
+        setupData(res);
+        return;
+      }
 
-      // Try to parse steps from jsonContent
-      if (res.jsonContent) {
-        try {
-          const content = JSON.parse(res.jsonContent);
-          if (content.type === 'linear' && Array.isArray(content.steps)) {
-            setSteps(content.steps);
-          } else if (content.nodes) {
-            // Fallback/Convert from React Flow if needed (advanced)
-            // For now assume linear if we are using this modal
-          }
-        } catch (e) {
-          console.error('Failed to parse workflow steps');
-        }
+      // Always try to fetch draft by code when editing an official template
+      const draft = await workflowService.getDraftByCode(res.code);
+      if (draft) {
+        setDraftData(draft);
+        setOfficialData(res);
+        setShowDraftConfirm(true);
+      } else {
+        setupData(res);
       }
     } catch (e) {
       message.error('Không tải được dữ liệu quy trình');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmDraft = (useDraft: boolean) => {
+    setupData(useDraft ? draftData : officialData);
+    setShowDraftConfirm(false);
+  };
+
+  const setupData = (data: any) => {
+    form.setFieldsValue({
+      name: data.name,
+      code: data.code,
+      version: data.version || 0,
+      description: data.description
+    });
+    setInitialCode(data.code);
+
+    if (data.jsonContent) {
+      try {
+        const content = JSON.parse(data.jsonContent);
+        if (content.type === 'linear' && Array.isArray(content.steps)) {
+          setSteps(content.steps);
+        }
+      } catch (e) {
+        console.error('Failed to parse workflow steps');
+      }
     }
   };
 
@@ -186,15 +216,16 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   };
 
   const handleSelectMasterStep = (tempId: string, masterId: string) => {
-    const master = MASTER_STEPS_DATA.find(m => m.id === masterId);
+    const master = stepDefinitions.find(m => m.id === masterId);
     if (!master) return;
 
     setSteps(steps.map(s => s.tempId === tempId ? {
       ...s,
       masterStepId: master.id,
-      name: master.name,
-      code: master.code,
-      screenCode: master.screenCode
+      name: master.stepName,
+      code: master.stepCode,
+      screenCode: master.stepCode,
+      requiredDocuments: master.requiredDocuments || []
     } : s));
   };
 
@@ -202,81 +233,101 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
     setSteps(steps.map(s => s.tempId === tempId ? { ...s, [field]: value } : s));
   };
 
-  const handleSave = async () => {
+  const getPayload = (values: any) => {
+    const flowNodes = [
+      {
+        id: 'node-start',
+        type: 'start',
+        position: { x: 50, y: 150 },
+        data: { label: 'Bắt đầu' }
+      },
+      ...steps.map((s, i) => ({
+        id: s.tempId,
+        type: 'state',
+        position: { x: 300 + i * 400, y: 150 },
+        data: { 
+          label: s.name, 
+          orderNo: i + 1,
+          screenCode: s.screenCode,
+          performerRole: s.executorRole,
+          approverRole: s.approverRole,
+          requiredDocuments: s.requiredDocuments
+        }
+      })),
+      {
+        id: 'node-end',
+        type: 'end',
+        position: { x: 300 + steps.length * 400, y: 150 },
+        data: { label: 'Kết thúc' }
+      }
+    ];
+
+    const flowEdges = [
+      {
+        id: 'edge-start',
+        source: 'node-start',
+        target: steps[0].tempId,
+        label: 'Bắt đầu',
+        markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+      },
+      ...steps.slice(0, -1).map((s, i) => ({
+        id: `e-${s.tempId}-${steps[i+1].tempId}`,
+        source: s.tempId,
+        target: steps[i+1].tempId,
+        label: 'Tiếp tục',
+        markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+      })),
+      {
+        id: 'edge-end',
+        source: steps[steps.length - 1].tempId,
+        target: 'node-end',
+        label: 'Hoàn thành',
+        markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+      }
+    ];
+
+    const jsonContent = JSON.stringify({
+      type: 'linear',
+      steps: steps,
+      nodes: flowNodes,
+      edges: flowEdges
+    });
+
+    return {
+      ...values,
+      jsonContent,
+      status: values.status || 'ACTIVE'
+    };
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      const values = await form.getFieldsValue();
+      if (steps.length === 0) {
+        message.warning('Vui lòng thêm ít nhất 1 bước');
+        return;
+      }
+      setLoading(true);
+      const result = await workflowService.syncDraft(getPayload(values));
+      message.success('Đã lưu bản nháp thành công');
+      onSuccess(result.id); // Return the draft ID
+    } catch (e) {
+      message.error('Lưu bản nháp thất bại');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
     try {
       const values = await form.validateFields();
       if (steps.length === 0) {
-        message.warning('Vui lòng thêm ít nhất 1 bước cho quy trình');
+        message.warning('Vui lòng thêm ít nhất 1 bước');
         return;
       }
 
       setLoading(true);
-      
-      // Construct JSON Content with Auto-generated Start/End Nodes
-      const flowNodes = [
-        {
-          id: 'node-start',
-          type: 'start',
-          position: { x: 50, y: 150 },
-          data: { label: 'Bắt đầu' }
-        },
-        ...steps.map((s, i) => ({
-          id: s.tempId,
-          type: 'state',
-          position: { x: 300 + i * 400, y: 150 },
-          data: { 
-            label: s.name, 
-            screenCode: s.screenCode,
-            performerRole: s.executorRole,
-            approverRole: s.approverRole
-          }
-        })),
-        {
-          id: 'node-end',
-          type: 'end',
-          position: { x: 300 + steps.length * 400, y: 150 },
-          data: { label: 'Kết thúc' }
-        }
-      ];
-
-      const flowEdges = [
-        {
-          id: 'edge-start',
-          source: 'node-start',
-          target: steps[0].tempId,
-          label: 'Bắt đầu',
-          markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-        },
-        ...steps.slice(0, -1).map((s, i) => ({
-          id: `e-${s.tempId}-${steps[i+1].tempId}`,
-          source: s.tempId,
-          target: steps[i+1].tempId,
-          label: 'Tiếp tục',
-          markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-        })),
-        {
-          id: 'edge-end',
-          source: steps[steps.length - 1].tempId,
-          target: 'node-end',
-          label: 'Hoàn thành',
-          markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-        }
-      ];
-
-      const jsonContent = JSON.stringify({
-        type: 'linear',
-        steps: steps,
-        nodes: flowNodes,
-        edges: flowEdges
-      });
-
-      const payload = {
-        ...values,
-        jsonContent,
-        status: 'ACTIVE'
-      };
-
-      const result = await workflowService.saveOfficial(payload);
+      const result = await workflowService.saveOfficial(getPayload(values));
       message.success(editingId ? 'Cập nhật quy trình thành công' : 'Tạo quy trình thành công');
 
       onSuccess(result.id);
@@ -289,7 +340,8 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       title={
         <div className="flex items-center gap-2 py-1">
           <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -300,16 +352,24 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
       }
       open={open}
       onCancel={onClose}
-      onOk={handleSave}
+      footer={[
+        <Button key="cancel" onClick={onClose} className="rounded-xl px-6 h-11 border-slate-200">
+          Hủy bỏ
+        </Button>,
+        <Button key="draft" onClick={handleSaveDraft} loading={loading} className="rounded-xl px-6 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 border-none">
+          Lưu bản nháp
+        </Button>,
+        <Button key="publish" type="primary" onClick={handlePublish} loading={loading} className="rounded-xl px-8 h-11 bg-blue-600 hover:bg-blue-700 border-none shadow-lg shadow-blue-100">
+          Xuất bản
+        </Button>
+      ]}
       width={1000}
-      confirmLoading={loading}
-      okText="Lưu dữ liệu"
-      cancelText="Hủy bỏ"
       centered
       styles={{ body: { padding: '24px', maxHeight: '75vh', overflowY: 'auto' } }}
       className="premium-modal"
     >
-      <Form form={form} layout="vertical" className="space-y-6">
+      <Spin spinning={loading} tip="Đang tải dữ liệu quy trình...">
+        <Form form={form} layout="vertical" className="space-y-6">
         {/* General Info */}
         <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
           <Row gutter={20}>
@@ -353,7 +413,11 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
                   }
                 ]}
               >
-                <Input placeholder="VD: APPROVE_TOPIC_001" className="rounded-xl h-11 font-mono uppercase" />
+                <Input 
+                  placeholder="VD: APPROVE_TOPIC_001" 
+                  className="rounded-xl h-11 font-mono uppercase" 
+                  disabled={!!editingId}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -415,6 +479,7 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
                       index={index}
                       totalSteps={steps.length}
                       roles={roles}
+                      stepDefinitions={stepDefinitions}
                       onRemove={removeStep}
                       onMove={moveStep}
                       onSelectMaster={handleSelectMasterStep}
@@ -438,6 +503,36 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
           </div>
         </div>
       </Form>
+      </Spin>
     </Modal>
+
+      <Modal
+        title="Phát hiện bản nháp chưa lưu"
+        open={showDraftConfirm}
+        onCancel={() => {
+          setShowDraftConfirm(false);
+          onClose(); // Close both if Cancel/Esc
+        }}
+        footer={[
+          <Button key="original" onClick={() => handleConfirmDraft(false)}>
+            Dùng bản chính thức
+          </Button>,
+          <Button key="draft" type="primary" onClick={() => handleConfirmDraft(true)}>
+            Tiếp tục bản nháp
+          </Button>
+        ]}
+        centered
+        maskClosable={false}
+      >
+        <div className="flex items-start gap-4 py-4">
+          <AlertCircle className="text-orange-500 mt-1" size={24} />
+          <div>
+            <p>Hệ thống tìm thấy một bản nháp chưa xuất bản của quy trình này.</p>
+            <p className="text-slate-500 text-sm mt-1">Lưu lúc: {draftData && new Date(draftData.lastSavedAt || draftData.updatedAt || draftData.createdAt).toLocaleString()}</p>
+            <p className="mt-4 font-medium">Bạn có muốn tiếp tục chỉnh sửa từ bản nháp này không?</p>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

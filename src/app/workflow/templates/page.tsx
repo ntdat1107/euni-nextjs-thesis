@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import {
   Typography, Card, Button, Space, Breadcrumb, Table, Tag,
-  Input, Row, Col, Tooltip, Modal, App as AntdApp, Switch
+  Input, Row, Col, Tooltip, Modal, App as AntdApp, Switch, Spin
 } from 'antd';
 import {
   Plus, Search, Eye, Edit, Trash2,
@@ -96,9 +96,16 @@ export default function WorkflowTemplatesListPage() {
       title: 'Tên Quy trình',
       dataIndex: 'name',
       key: 'name',
-      render: (text, record) => (
+      render: (text, record: any) => (
         <div className="flex flex-col">
-          <Text strong>{text}</Text>
+          <div className="flex items-center gap-2">
+            <Text strong>{text}</Text>
+            {record.hasDraft && (
+              <Tooltip title="Có bản nháp chưa lưu">
+                <AlertCircle size={14} className="text-orange-500" />
+              </Tooltip>
+            )}
+          </div>
           <Text type="secondary" className="text-xs">ID: {record.id}</Text>
         </div>
       ),
@@ -114,14 +121,9 @@ export default function WorkflowTemplatesListPage() {
       dataIndex: 'status',
       key: 'status',
       width: 180,
-      render: (status, record) => (
+      render: (status) => (
         <div className="flex items-center gap-3">
           {getStatusTag(status)}
-          <Switch
-            size="small"
-            checked={(status || 'ACTIVE').toUpperCase() === 'ACTIVE'}
-            onChange={(checked) => handleStatusChange(record.id, checked)}
-          />
         </div>
       ),
     },
@@ -143,6 +145,17 @@ export default function WorkflowTemplatesListPage() {
       width: 80,
       render: (_, record) => (
         <Space size="middle">
+          <Tooltip title="Chỉnh sửa nhanh">
+            <Button
+              type="text"
+              icon={<Edit size={18} className="text-amber-500" />}
+              onClick={() => {
+                setEditingId(record.id);
+                setIsModalOpen(true);
+              }}
+              className="hover:bg-amber-50"
+            />
+          </Tooltip>
           <Tooltip title="Xem chi tiết">
             <Button
               type="text"
@@ -158,59 +171,60 @@ export default function WorkflowTemplatesListPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { title: 'Trang chủ' },
-            { title: 'Quy trình' },
-            { title: 'Mẫu quy trình' },
-          ]}
-        />
-
-        <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <div>
-            <Title level={2} className="!mb-1 !text-slate-800">Mẫu Quy trình Hệ thống</Title>
-            <Paragraph type="secondary" className="!mb-0 text-slate-500">
-              Quản lý danh sách các luồng quy trình nghiệp vụ đã được định nghĩa
-            </Paragraph>
-          </div>
-          <Button
-            type="primary"
-            icon={<Plus size={18} />}
-            onClick={() => {
-              setEditingId(null);
-              setIsModalOpen(true);
-            }}
-            className="rounded-xl px-6 h-11 font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 border-none"
-          >
-            Tạo mới Quy trình
-          </Button>
-        </div>
-
-        <Card className="shadow-sm border-slate-200 rounded-2xl">
-          <Row gutter={16} className="mb-6">
-            <Col span={12}>
-              <Input
-                placeholder="Tìm kiếm theo tên hoặc mã quy trình..."
-                prefix={<Search size={18} className="text-slate-400" />}
-                className="h-10 rounded-lg"
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-              />
-            </Col>
-          </Row>
-
-          <Table
-            columns={columns as any}
-            dataSource={data.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()) || i.code.toLowerCase().includes(searchText.toLowerCase()))}
-            rowKey="id"
-            loading={loading}
-            className="workflow-table"
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
+      <Spin spinning={loading} tip="Đang tải danh sách quy trình..." size="large">
+        <div className="flex flex-col gap-6">
+          <Breadcrumb
+            items={[
+              { title: 'Trang chủ' },
+              { title: 'Quy trình' },
+              { title: 'Mẫu quy trình' },
+            ]}
           />
-        </Card>
 
-      </div>
+          <div className="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+            <div>
+              <Title level={2} className="!mb-1 !text-slate-800">Mẫu Quy trình Hệ thống</Title>
+              <Paragraph type="secondary" className="!mb-0 text-slate-500">
+                Quản lý danh sách các luồng quy trình nghiệp vụ đã được định nghĩa
+              </Paragraph>
+            </div>
+            <Button
+              type="primary"
+              icon={<Plus size={18} />}
+              onClick={() => {
+                setEditingId(null);
+                setIsModalOpen(true);
+              }}
+              className="rounded-xl px-6 h-11 font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 border-none"
+            >
+              Tạo mới Quy trình
+            </Button>
+          </div>
+
+          <Card className="shadow-sm border-slate-200 rounded-2xl">
+            <Row gutter={16} className="mb-6">
+              <Col span={12}>
+                <Input
+                  placeholder="Tìm kiếm theo tên hoặc mã quy trình..."
+                  prefix={<Search size={18} className="text-slate-400" />}
+                  className="h-10 rounded-lg"
+                  value={searchText}
+                  onChange={e => setSearchText(e.target.value)}
+                />
+              </Col>
+            </Row>
+
+            <Table
+              columns={columns as any}
+              dataSource={data.filter(i => i.name.toLowerCase().includes(searchText.toLowerCase()) || i.code.toLowerCase().includes(searchText.toLowerCase()))}
+              rowKey="id"
+              loading={loading}
+              className="workflow-table"
+              pagination={{ pageSize: 10, position: ['bottomRight'] }}
+            />
+          </Card>
+        </div>
+      </Spin>
 
       <WorkflowEditorModal
         open={isModalOpen}

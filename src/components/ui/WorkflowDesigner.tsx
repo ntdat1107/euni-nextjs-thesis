@@ -37,7 +37,8 @@ import {
   Plus, 
   Trash2, 
   CircleStop,
-  CirclePlay
+  CirclePlay,
+  FileText
 } from 'lucide-react';
 import { rbacService, Role } from '@/services/rbacService';
 
@@ -46,47 +47,79 @@ const { Title, Text } = Typography;
 // --- CUSTOM NODES ---
 
 const StartNode = ({ data }: any) => (
-  <div className="px-4 py-2 rounded-full border-2 border-green-500 bg-white shadow-md flex items-center gap-2 min-w-[120px] justify-center relative">
-    <CirclePlay className="text-green-500" size={16} />
-    <span className="font-bold text-slate-700 text-sm">{data.label || 'Bắt đầu'}</span>
-    <Handle type="source" position={Position.Right} className="!bg-green-500" />
+  <div className="px-6 py-2.5 rounded-full border-2 border-green-500 bg-white shadow-lg flex items-center gap-2 min-w-[140px] justify-center relative hover:shadow-xl transition-all">
+    <CirclePlay className="text-green-500" size={18} />
+    <span className="font-extrabold text-slate-700 text-sm tracking-tight">{data.label || 'Bắt đầu'}</span>
+    <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-green-500 !border-2 !border-white" />
   </div>
 );
 
 const EndNode = ({ data }: any) => (
-  <div className="px-4 py-2 rounded-full border-2 border-red-500 bg-white shadow-md flex items-center gap-2 min-w-[120px] justify-center relative">
-    <CircleStop className="text-red-500" size={16} />
-    <span className="font-bold text-slate-700 text-sm">{data.label || 'Kết thúc'}</span>
-    <Handle type="target" position={Position.Left} className="!bg-red-500" />
+  <div className="px-6 py-2.5 rounded-full border-2 border-red-500 bg-white shadow-lg flex items-center gap-2 min-w-[140px] justify-center relative hover:shadow-xl transition-all">
+    <CircleStop className="text-red-500" size={18} />
+    <span className="font-extrabold text-slate-700 text-sm tracking-tight">{data.label || 'Kết thúc'}</span>
+    <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-red-500 !border-2 !border-white" />
   </div>
 );
 
-const StateNode = ({ data }: any) => (
-  <div className="px-4 py-3 rounded-xl border-2 border-slate-200 bg-white shadow-lg min-w-[180px] hover:border-blue-400 transition-colors relative">
-    <Handle type="target" position={Position.Left} className="!bg-slate-400" />
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between border-b border-slate-50 pb-2 mb-1">
-        <span className="font-bold text-slate-800 text-sm">{data.label}</span>
-        <Tag color="blue" className="text-[9px] font-bold border-none m-0 rounded-md uppercase">{data.screenCode || 'N/A'}</Tag>
-      </div>
-      <div className="flex flex-col gap-1">
-        {data.performerRole && (
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Actor:</span>
-            <span className="text-[10px] text-slate-600 font-medium">{data.performerRole}</span>
+const StateNode = ({ data }: any) => {
+  const isEnabled = data.isEnabled !== false;
+  
+  return (
+    <div className={`workflow-step-node bg-white rounded-xl border-2 shadow-lg hover:shadow-xl transition-all w-[320px] overflow-hidden ${isEnabled ? 'border-blue-400' : 'border-slate-300 opacity-75'}`}>
+      <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
+      
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-blue-50 bg-blue-50/30 flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-2 mb-1">
+            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 ${isEnabled ? 'bg-blue-500 border-blue-600 text-white' : 'bg-slate-400 border-slate-500 text-white'}`}>
+              {data.orderNo || 1}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-slate-800 text-sm leading-tight break-words">{data.label}</span>
+              <span className="text-[10px] text-slate-400 font-mono mt-1 uppercase tracking-wider">{data.screenCode || 'N/A'}</span>
+            </div>
           </div>
-        )}
-        {data.approverRole && (
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Review:</span>
-            <span className="text-[10px] text-slate-600 font-medium">{data.approverRole}</span>
-          </div>
-        )}
+        </div>
+        <FileText className="text-blue-500 w-5 h-5 flex-shrink-0 ml-2" />
       </div>
+
+      {/* Body */}
+      <div className="px-4 py-3 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400 text-[10px] font-bold uppercase w-20">Loại:</span>
+          <Tag color="blue" className="text-[10px] font-bold border-none m-0 rounded-md px-2 py-0">Form</Tag>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400 text-[10px] font-bold uppercase w-20">Thực hiện:</span>
+          <span className="text-[11px] text-blue-700 font-semibold truncate">{data.performerRole || '---'}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400 text-[10px] font-bold uppercase w-20">Phê duyệt:</span>
+          <span className="text-[11px] text-emerald-700 font-semibold truncate">{data.approverRole || '---'}</span>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
+           {data.requiredDocuments && data.requiredDocuments.length > 0 && (
+             <div className="flex flex-wrap gap-1 mt-1 w-full">
+               <span className="text-[9px] text-slate-400 font-bold uppercase w-full mb-1">Hồ sơ yêu cầu:</span>
+               {data.requiredDocuments.map((doc: string, idx: number) => (
+                 <Tag key={idx} className="m-0 text-[9px] bg-slate-100 border-none text-slate-600 rounded-md">
+                   {doc}
+                 </Tag>
+               ))}
+             </div>
+           )}
+        </div>
+      </div>
+
+      <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white" />
     </div>
-    <Handle type="source" position={Position.Right} className="!bg-slate-400" />
-  </div>
-);
+  );
+};
 
 const nodeTypes = {
   start: StartNode,
@@ -244,11 +277,16 @@ function DesignerInner({
   }, [nodes, edges, onChange, readOnly]);
 
   const addStateNode = () => {
+    const stateNodeCount = nodes.filter(n => n.type === 'state').length;
     const newNode: Node = {
       id: `state-${Date.now()}`,
       type: 'state',
       position: { x: Math.random() * 200 + 300, y: Math.random() * 100 + 100 },
-      data: { label: 'Trạng thái mới', screenCode: 'DASHBOARD' },
+      data: { 
+        label: 'Trạng thái mới', 
+        screenCode: 'DASHBOARD',
+        orderNo: stateNodeCount + 1
+      },
     };
     setNodes((nds) => nds.concat(newNode));
   };

@@ -6,6 +6,7 @@ export interface WorkflowTemplateRequest {
   description?: string;
   status?: string;
   jsonContent: string;
+  draftId?: string;
 }
 
 export interface WorkflowTemplateResponse {
@@ -55,6 +56,14 @@ const workflowService = {
       return await api.get(`/workflow-templates/draft/${code}`, { signal });
     } catch (error) {
       // Return null if no draft found (404 or other errors)
+      return null;
+    }
+  },
+  
+  getLatestByCode: async (code: string, signal?: AbortSignal): Promise<WorkflowTemplateResponse | null> => {
+    try {
+      return await api.get(`/workflow-templates/latest/${code}`, { signal });
+    } catch (error) {
       return null;
     }
   },
