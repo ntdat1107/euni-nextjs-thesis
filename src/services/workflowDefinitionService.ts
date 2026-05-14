@@ -11,12 +11,10 @@ export interface WorkflowStepDefinitionResponse {
 
 export const workflowDefinitionService = {
   getAll: async (): Promise<WorkflowStepDefinitionResponse[]> => {
-    const response = await apiClient.get('/workflow-definitions');
-    return response;
+    return apiClient.get('/workflow-definitions');
   },
 
   getByType: async (type: string): Promise<WorkflowStepDefinitionResponse[]> => {
-    const response = await apiClient.get(`/workflow-definitions/type/${type}`);
-    return response;
+    return apiClient.get(`/workflow-definitions/type/${type}`);
   }
 };

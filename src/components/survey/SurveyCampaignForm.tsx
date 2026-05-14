@@ -364,10 +364,10 @@ export default function SurveyCampaignForm() {
                   <Col span={8}>
                     <Text className="font-semibold text-slate-700 text-lg">{step.title}</Text>
                     <div className="flex gap-2 mt-2">
-                      <Tag color="blue" size="small" className="text-[10px] rounded-md">
+                      <Tag color="blue" className="text-[10px] rounded-md">
                         {roles.find(r => r.code === step.configuration?.performerRole)?.name || 'Performer'}
                       </Tag>
-                      <Tag color="orange" size="small" className="text-[10px] rounded-md">
+                      <Tag color="orange" className="text-[10px] rounded-md">
                         {roles.find(r => r.code === step.configuration?.approverRole)?.name || 'Approver'}
                       </Tag>
                     </div>
@@ -523,7 +523,7 @@ export default function SurveyCampaignForm() {
                     label={<span className="text-sm font-semibold text-slate-700">Chương trình đào tạo</span>}
                     rules={[{ required: true, message: 'Vui lòng chọn chương trình' }]}
                   >
-                    <Select placeholder="Chọn chương trình đào tạo" className="h-11 shadow-sm border-slate-200 rounded-xl" styles={{ selector: { borderRadius: '12px' } }}>
+                    <Select placeholder="Chọn chương trình đào tạo" className="h-11 shadow-sm border-slate-200 rounded-xl">
                       {programs.map(p => (
                         <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
                       ))}
