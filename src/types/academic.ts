@@ -25,6 +25,7 @@ export interface Program {
   generalObjective?: string;
   specificObjectives?: string;
   learningOutcomes?: string;
+  data?: string; // Synced metadata JSON
   createdAt: string;
   updatedAt: string;
 }
@@ -48,4 +49,5 @@ export interface ProgramCourse {
   courseName?: string;
   courseCode?: string;
   credits?: number;
+  data?: string; // Synced metadata JSON
 }

@@ -4,68 +4,71 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   Typography, Card, Button, Space, Breadcrumb, Form, Input,
-  Select, Steps, Divider, Row, Col, DatePicker, App as AntdApp,
-  Empty, Checkbox,
-  Tag
+  Select, Divider, Row, Col, DatePicker, App as AntdApp,
+  Empty, Checkbox, Tag, Tooltip, Progress,
+  Modal
 } from 'antd';
 import {
-  ArrowLeft, ArrowRight, Save, CheckCircle2,
-  Settings, FileText, Users, Calendar, Info, Loader2
+  ArrowLeft, Save, CheckCircle2,
+  Settings, FileText, Users, Calendar, Info, Loader2,
+  ChevronRight, PlayCircle, ClipboardList, Clock, AlertCircle, Edit
 } from 'lucide-react';
 import dayjs from 'dayjs';
-import { XMLParser } from 'fast-xml-parser';
 import { programService } from '@/services/programService';
 import workflowService, { WorkflowTemplateResponse } from '@/services/workflowService';
 import { surveyCampaignService, SurveyCampaignRequest } from '@/services/surveyCampaignService';
 import { rbacService, Role } from '@/services/rbacService';
+import { workflowDefinitionService, WorkflowStepDefinitionResponse } from '@/services/workflowDefinitionService';
 
 const { Title, Text, Paragraph } = Typography;
-
-// No more mock data here
 
 export default function SurveyCampaignForm() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const { message } = AntdApp.useApp();
-  
+
   const id = params?.id as string;
   const isNew = !id || id === 'new';
-  const mode = searchParams.get('mode');
-  const isView = !isNew && mode !== 'edit';
-  
-  const [currentStep, setCurrentStep] = useState(-1);
+  const isView = !isNew;
+
   const [form] = Form.useForm();
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<any[]>([]);
-  const [maxStepReached, setMaxStepReached] = useState(-1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [programs, setPrograms] = useState<any[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowTemplateResponse[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [stepDefinitions, setStepDefinitions] = useState<WorkflowStepDefinitionResponse[]>([]);
   const [campaignData, setCampaignData] = useState<any>(null);
+  const [isStepModalOpen, setIsStepModalOpen] = useState(false);
+  const [selectedStep, setSelectedStep] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm] = Form.useForm();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [pData, wData, rData] = await Promise.all([
+        const [pData, wData, rData, dData] = await Promise.all([
           programService.getAll(),
           workflowService.getAll(),
-          rbacService.getRoles()
+          rbacService.getRoles(),
+          workflowDefinitionService.getAll()
         ]);
         setPrograms(pData);
         setWorkflows(wData);
         setRoles(rData);
+        setStepDefinitions(dData);
       } catch (error) {
         message.error('Lỗi khi tải dữ liệu khởi tạo');
       } finally {
-        setIsLoading(false);
+        if (isNew) setIsLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [isNew, message]);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -76,18 +79,22 @@ export default function SurveyCampaignForm() {
           setCampaignData(data);
           form.setFieldsValue({
             ...data,
-            range: [dayjs(data.startDate), dayjs(data.endDate)]
+            range: [dayjs(data.startDate), dayjs(data.endDate)],
+            workflowId: data.workflowTemplateId
           });
           setSelectedWorkflowId(data.workflowTemplateId);
-          setWorkflowSteps(data.steps.map(s => ({
-            id: s.id,
-            title: s.stepName,
-            deadline: s.deadline ? dayjs(s.deadline) : null,
-            requiredDocuments: s.requiredDocuments,
-            configuration: s.configuration
-          })));
-          setCurrentStep(0);
-          if (isView) setMaxStepReached(data.steps.length);
+          setWorkflowSteps(data.steps.map(s => {
+            // Parse configuration if it's a string
+            const config = typeof s.configuration === 'string' ? JSON.parse(s.configuration) : (s.configuration || {});
+            return {
+              id: s.id,
+              title: s.stepName,
+              deadline: s.deadline ? dayjs(s.deadline) : null,
+              requiredDocuments: typeof s.requiredDocuments === 'string' ? JSON.parse(s.requiredDocuments) : (s.requiredDocuments || []),
+              configuration: config,
+              status: s.status
+            };
+          }));
         } catch (error) {
           message.error('Lỗi khi tải chi tiết đợt khảo sát');
         } finally {
@@ -96,13 +103,22 @@ export default function SurveyCampaignForm() {
       };
       fetchCampaign();
     }
-  }, [id, isNew, form, isView]);
+  }, [id, isNew, form, message]);
 
-  useEffect(() => {
-    if (currentStep > maxStepReached) {
-      setMaxStepReached(currentStep);
+  const handleApprove = async () => {
+    try {
+      setIsSubmitting(true);
+      await surveyCampaignService.approve(id);
+      message.success('Đã phê duyệt đợt khảo sát và đồng bộ dữ liệu Master Data thành công!');
+      // Refresh data
+      const data = await surveyCampaignService.getById(id);
+      setCampaignData(data);
+    } catch (error: any) {
+      message.error(error.message || 'Lỗi khi phê duyệt đợt khảo sát');
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [currentStep, maxStepReached]);
+  };
 
   useEffect(() => {
     if (isNew && selectedWorkflowId && workflows.length > 0) {
@@ -122,7 +138,6 @@ export default function SurveyCampaignForm() {
             while (currentNodeId && !visited.has(currentNodeId)) {
               visited.add(currentNodeId);
 
-              // Find outgoing edge (prefer CONFIRM type if multiple, but here we just take the first)
               const outgoingEdge = edges.find((e: any) => e.source === currentNodeId);
               if (!outgoingEdge) break;
 
@@ -130,6 +145,9 @@ export default function SurveyCampaignForm() {
               const taskNode = nodes.find((n: any) => n.id === targetId && n.type === 'state');
 
               if (taskNode) {
+                const stepCode = taskNode.data.screenCode;
+                const definition = stepDefinitions.find(d => d.stepCode === stepCode);
+
                 steps.push({
                   title: taskNode.data.label || taskNode.id,
                   description: '',
@@ -137,10 +155,10 @@ export default function SurveyCampaignForm() {
                     taskId: taskNode.id,
                     performerRole: taskNode.data.performerRole || '',
                     approverRole: taskNode.data.approverRole || '',
-                    screenCode: taskNode.data.screenCode || ''
+                    screenCode: stepCode || ''
                   },
                   deadline: null,
-                  requiredDocuments: []
+                  requiredDocuments: taskNode.data.requiredDocuments || (definition ? definition.requiredDocuments : [])
                 });
               }
 
@@ -153,65 +171,21 @@ export default function SurveyCampaignForm() {
         }
       }
     }
-  }, [selectedWorkflowId, workflows, isNew]);
+  }, [selectedWorkflowId, workflows, isNew, stepDefinitions]);
 
   const handleWorkflowChange = (value: string) => {
     setSelectedWorkflowId(value);
   };
 
-  const next = async () => {
-    try {
-      if (!isView) {
-        await form.validateFields();
-      }
-
-      setCurrentStep(currentStep + 1);
-    } catch (error) {
-       console.error('Validation error:', error);
-    }
-  };
-
-  const prev = () => {
-    setCurrentStep(currentStep - 1);
-  };
-
-  const handleStepChange = async (step: number) => {
-    // If we are in General Info, we must validate first to move to steps
-    if (currentStep === -1) {
-      if (step >= 0) {
-        await next();
-      }
-      return;
-    }
-
-    // If going back to general info
-    if (step < 0) {
-      setCurrentStep(-1);
-      return;
-    }
-
-    // If going back, just go
-    if (step < currentStep) {
-      setCurrentStep(step);
-      return;
-    }
-    
-    if (step <= maxStepReached || isView) {
-      setCurrentStep(step);
-    } else if (step === currentStep + 1) {
-      await next();
-    }
-  };
-
   const onFinish = async (values: any) => {
     try {
       setIsSubmitting(true);
-      const { range, ...rest } = values;
-      
+      const { range, workflowId, ...rest } = values;
+
       const requestData: SurveyCampaignRequest = {
         ...rest,
         code: values.code || `CAM-${Date.now()}`,
-        workflowTemplateId: selectedWorkflowId!,
+        status: isNew ? 'ACTIVE' : (values.status || 'ACTIVE'),
         startDate: range?.[0] ? range[0].toISOString() : dayjs().toISOString(),
         endDate: range?.[1] ? range[1].toISOString() : dayjs().add(1, 'month').toISOString(),
         steps: workflowSteps.map((s, idx) => ({
@@ -225,7 +199,7 @@ export default function SurveyCampaignForm() {
 
       let result;
       if (isNew) {
-        result = await surveyCampaignService.create(requestData);
+        result = await surveyCampaignService.create({ ...requestData, workflowTemplateId: selectedWorkflowId! });
         message.success('Đã tạo đợt khảo sát thành công!');
       } else {
         result = await surveyCampaignService.update(id, requestData);
@@ -240,190 +214,12 @@ export default function SurveyCampaignForm() {
     }
   };
 
-  const totalSteps = workflowSteps.length;
-
-  const renderStepContent = (stepIndex: number) => {
-    if (stepIndex === -1) {
-      return (
-        <div className="max-w-3xl mx-auto py-6">
-          <Row gutter={24}>
-            <Col span={12}>
-              <Form.Item
-                name="code"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Mã đợt khảo sát</span>}
-                rules={[
-                  {
-                    validator: async (_, value) => {
-                      if (!value || !isNew) return Promise.resolve();
-                      try {
-                        const exists = await surveyCampaignService.checkCode(value);
-                        if (exists) {
-                          return Promise.reject('Mã đợt khảo sát này đã tồn tại!');
-                        }
-                      } catch (error) {
-                        // Ignore check error
-                      }
-                      return Promise.resolve();
-                    }
-                  }
-                ]}
-                validateTrigger="onBlur"
-              >
-                <Input placeholder="Tự động sinh nếu để trống" className="h-11 rounded-xl" disabled={isView} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="name"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Tên đợt khảo sát</span>}
-                rules={[{ required: true, message: 'Vui lòng nhập tên đợt khảo sát' }]}
-              >
-                <Input placeholder="Ví dụ: Khảo sát CTĐT CNTT 2026" className="h-11 rounded-xl" disabled={isView} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="programId"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Chương trình đào tạo</span>}
-                rules={[{ required: true, message: 'Vui lòng chọn chương trình' }]}
-              >
-                <Select placeholder="Chọn chương trình đào tạo" className="h-11" disabled={isView}>
-                  {programs.map(p => (
-                    <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="workflowId"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Mẫu quy trình áp dụng</span>}
-                rules={[{ required: true, message: 'Vui lòng chọn mẫu quy trình' }]}
-              >
-                <Select 
-                  placeholder="Chọn mẫu quy trình" 
-                  className="h-11" 
-                  onChange={handleWorkflowChange}
-                  disabled={isView || !isNew}
-                >
-                  {workflows.map(w => (
-                    <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item
-                name="range"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Thời gian thực hiện</span>}
-                rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
-              >
-                <DatePicker.RangePicker className="w-full h-11 rounded-xl" disabled={isView} />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item
-                name="description"
-                label={<span className="font-bold text-slate-600 uppercase text-xs tracking-wider">Mô tả chi tiết</span>}
-              >
-                <Input.TextArea rows={4} placeholder="Nhập mô tả đợt khảo sát..." className="rounded-xl" disabled={isView} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </div>
-      );
-    }
-
-    const currentWfStep = workflowSteps[stepIndex];
-    if (currentWfStep) {
-      return (
-        <div className="max-w-4xl mx-auto py-6">
-          <Card className="bg-blue-50/50 border-blue-100 rounded-2xl mb-6 shadow-none">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white rounded-xl shadow-sm text-blue-600">
-                <Settings className="w-6 h-6" />
-              </div>
-              <div>
-                <Title level={4} className="!mb-0 text-blue-900">{currentWfStep.title}</Title>
-                <Text type="secondary" className="text-sm">{currentWfStep.description || 'Không có mô tả chi tiết'}</Text>
-              </div>
-            </div>
-          </Card>
-
-          <div className="space-y-6">
-             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <Title level={5} className="flex items-center gap-2 mb-4">
-                  <Users className="w-4 h-4 text-slate-400" />
-                  Quy định thực hiện (Theo quy trình)
-                </Title>
-                <Row gutter={24}>
-                  <Col span={12}>
-                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Người thực hiện</Text>
-                    <Tag color="blue" className="text-sm px-3 py-1 rounded-full">
-                       {roles.find(r => r.code === currentWfStep.configuration?.performerRole)?.name || 'Mọi thành viên'}
-                    </Tag>
-                  </Col>
-                  <Col span={12}>
-                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Người kiểm duyệt</Text>
-                    <Tag color="orange" className="text-sm px-3 py-1 rounded-full">
-                       {roles.find(r => r.code === currentWfStep.configuration?.approverRole)?.name || 'Chưa quy định'}
-                    </Tag>
-                  </Col>
-                </Row>
-             </div>
-
-             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <Title level={5} className="flex items-center gap-2 mb-4">
-                  <FileText className="w-4 h-4 text-slate-400" />
-                  Tài liệu/Biểu mẫu yêu cầu
-                </Title>
-                <Checkbox.Group 
-                  className="flex flex-col gap-3" 
-                  disabled={isView} 
-                  value={currentWfStep.requiredDocuments}
-                  onChange={(checkedValues) => {
-                    const newSteps = [...workflowSteps];
-                    newSteps[stepIndex].requiredDocuments = checkedValues;
-                    setWorkflowSteps(newSteps);
-                  }}
-                >
-                  <Checkbox value="doc-1">Kế hoạch chi tiết đợt khảo sát</Checkbox>
-                  <Checkbox value="doc-2">Danh sách sinh viên/cựu sinh viên</Checkbox>
-                  <Checkbox value="doc-3">Quyết định thành lập hội đồng</Checkbox>
-                </Checkbox.Group>
-             </div>
-
-             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <Title level={5} className="flex items-center gap-2 mb-4">
-                   <Calendar className="w-4 h-4 text-slate-400" />
-                   Hạn chót hoàn thành (Deadline)
-                </Title>
-                <DatePicker 
-                  className="w-full h-11 rounded-xl" 
-                  disabled={isView} 
-                  placeholder="Chọn ngày hạn chót" 
-                  value={currentWfStep.deadline}
-                  onChange={(date) => {
-                    const newSteps = [...workflowSteps];
-                    newSteps[stepIndex].deadline = date;
-                    setWorkflowSteps(newSteps);
-                  }}
-                />
-             </div>
-          </div>
-        </div>
-      );
-    }
-
-    return <Empty description="Không có dữ liệu quy trình" />;
-  };
-
   const renderCampaignHeader = () => {
     const data = !isNew ? campaignData : form.getFieldsValue();
     const selectedProgram = programs.find(p => p.id === data?.programId);
     const programName = data?.programName || selectedProgram?.name || '---';
     const programCode = data?.programCode || selectedProgram?.code || '';
-    const workflowName = data?.workflowTemplateName || workflows.find(w => w.id === data?.workflowTemplateId || w.id === data?.workflowId)?.name || '---';
+    const workflowName = data?.workflowTemplateName || workflows.find(w => w.id === (data?.workflowTemplateId || data?.workflowId))?.name || '---';
 
     return (
       <div className="bg-slate-50/80 px-12 py-6 border-b border-slate-100">
@@ -431,22 +227,22 @@ export default function SurveyCampaignForm() {
           <Col span={8}>
             <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Chương trình đào tạo</Text>
             <Text className="text-slate-700 font-semibold flex items-center gap-2">
-               <Info size={14} className="text-blue-500" />
-               {programCode ? `[${programCode}] ` : ''}{programName}
+              <Info size={14} className="text-blue-500" />
+              {programCode ? `[${programCode}] ` : ''}{programName}
             </Text>
           </Col>
           <Col span={8}>
             <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Mẫu quy trình</Text>
             <Text className="text-slate-700 font-semibold flex items-center gap-2">
-               <Settings size={14} className="text-purple-500" />
-               {workflowName}
+              <Settings size={14} className="text-purple-500" />
+              {workflowName}
             </Text>
           </Col>
           <Col span={8}>
-            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Thời gian hiệu lực</Text>
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Thời gian khảo sát</Text>
             <Text className="text-slate-700 font-semibold flex items-center gap-2">
-               <Calendar size={14} className="text-emerald-500" />
-               {data?.startDate ? `${dayjs(data.startDate).format('DD/MM/YYYY')} - ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
+              <Calendar size={14} className="text-emerald-500" />
+              {data?.startDate ? `${dayjs(data.startDate).format('DD/MM/YYYY')} - ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
             </Text>
           </Col>
         </Row>
@@ -456,6 +252,187 @@ export default function SurveyCampaignForm() {
             <Paragraph className="!mb-0 text-slate-600 text-sm italic">
               "{data.description}"
             </Paragraph>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderExecutionProgress = () => {
+    return (
+      <div className="px-12 py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Title level={4} className="!mb-1">Tiến độ thực hiện</Title>
+            <Text type="secondary" className="text-sm">Trạng thái các bước trong chương trình đào tạo</Text>
+          </div>
+          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+            <div className="text-right">
+              <Text className="text-[10px] font-bold text-slate-400 uppercase block">Tổng tiến độ</Text>
+              <Text className="text-sm font-bold text-blue-600">0/{workflowSteps.length} bước</Text>
+            </div>
+            <Progress type="circle" percent={0} size={40} strokeWidth={12} />
+          </div>
+        </div>
+
+        <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+          <div className="bg-slate-50/50 px-6 py-4 flex items-center justify-between border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <Text className="font-semibold text-slate-700 text-base">
+                {campaignData?.programName || '---'}
+              </Text>
+            </div>
+            <Tag color="blue" className="rounded-full px-3">
+              {workflowSteps.length} bước
+            </Tag>
+          </div>
+
+          <table className="w-full text-sm">
+            <thead className="text-[11px] text-slate-400 uppercase tracking-wider bg-white border-b border-slate-100">
+              <tr>
+                <th className="px-6 py-4 text-center w-16">#</th>
+                <th className="px-4 py-4 text-left">Tên bước thực hiện</th>
+                <th className="px-4 py-4 text-left">Hồ sơ công việc</th>
+                <th className="px-4 py-4 text-left">Người thực hiện</th>
+                <th className="px-4 py-4 text-left">Hạn chót</th>
+                <th className="px-4 py-4 text-left">Trạng thái</th>
+                <th className="px-6 py-4 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {workflowSteps.length > 0 ? workflowSteps.map((step, idx) => (
+                <tr key={step.id || idx} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-6 py-5 text-center font-bold text-slate-300 group-hover:text-blue-400 transition-colors">
+                    {(idx + 1).toString().padStart(2, '0')}
+                  </td>
+                  <td className="px-4 py-5">
+                    <div className="flex flex-col">
+                      <Text className="font-semibold text-slate-700">{step.title}</Text>
+                      {step.configuration?.screenCode && (
+                        <Text className="text-[10px] text-slate-400 font-mono">CODE: {step.configuration.screenCode}</Text>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-5">
+                    <div className="flex flex-wrap gap-1">
+                      {step.requiredDocuments?.map((doc: string, dIdx: number) => (
+                        <Tag key={dIdx} className="bg-slate-50 border-slate-200 text-slate-500 text-[10px] rounded-md">
+                          {doc}
+                        </Tag>
+                      ))}
+                      {(!step.requiredDocuments || step.requiredDocuments.length === 0) && <Text type="secondary" className="text-xs italic">Không có</Text>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-5">
+                    <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium">
+                      {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
+                    </Tag>
+                  </td>
+                  <td className="px-4 py-5">
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <Clock size={14} className="text-slate-300" />
+                      <Text className="text-sm">
+                        {step.deadline ? dayjs(step.deadline).format('DD/MM/YYYY') : 'Chưa thiết lập'}
+                      </Text>
+                    </div>
+                  </td>
+                  <td className="px-4 py-5">
+                    {(() => {
+                      const status = (step.status || '').toUpperCase();
+                      if (status === 'COMPLETED') return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full">Hoàn thành</Tag>;
+                      if (status === 'ACTIVE') return <Tag icon={<Clock size={12} />} color="processing" className="rounded-full">Đang thực hiện</Tag>;
+                      return <Tag icon={<AlertCircle size={12} />} color="default" className="rounded-full">Chờ khởi tạo</Tag>;
+                    })()}
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <Tooltip title="Xem chi tiết bước">
+                      <Button
+                        type="text"
+                        icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
+                        className="flex items-center justify-center ml-auto hover:bg-blue-50 rounded-full w-9 h-9"
+                        onClick={() => {
+                          router.push(`/survey/campaigns/${id}/steps/${step.id || idx}`);
+                        }}
+                      />
+                    </Tooltip>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6} className="py-12">
+                    <Empty description="Không có bước nào được cấu hình" />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderConfigSteps = () => {
+    return (
+      <div className="space-y-6 mt-8">
+        <div className="flex items-center gap-2 mb-4">
+          <ClipboardList className="text-blue-500" size={20} />
+          <Title level={4} className="!mb-0">Cấu hình chi tiết các bước</Title>
+        </div>
+
+        {workflowSteps.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4">
+            {workflowSteps.map((step, idx) => (
+              <Card key={idx} className="rounded-2xl border-slate-100 hover:border-blue-200 transition-all shadow-sm">
+                <Row gutter={24} align="middle">
+                  <Col span={1} className="text-center">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-400">
+                      {idx + 1}
+                    </div>
+                  </Col>
+                  <Col span={8}>
+                    <Text className="font-semibold text-slate-700 text-lg">{step.title}</Text>
+                    <div className="flex gap-2 mt-2">
+                      <Tag color="blue" className="text-[10px] rounded-md">
+                        {roles.find(r => r.code === step.configuration?.performerRole)?.name || 'Performer'}
+                      </Tag>
+                      <Tag color="orange" className="text-[10px] rounded-md">
+                        {roles.find(r => r.code === step.configuration?.approverRole)?.name || 'Approver'}
+                      </Tag>
+                    </div>
+                  </Col>
+                  <Col span={8}>
+                    <Text className="text-sm font-semibold text-slate-500 block mb-2">Hạn chót (Deadline)</Text>
+                    <DatePicker
+                      className="w-full h-10 rounded-lg"
+                      placeholder="Chọn ngày"
+                      value={step.deadline}
+                      onChange={(date) => {
+                        const newSteps = [...workflowSteps];
+                        newSteps[idx].deadline = date;
+                        setWorkflowSteps(newSteps);
+                      }}
+                    />
+                  </Col>
+                  <Col span={7}>
+                    <Text className="text-sm font-semibold text-slate-500 block mb-2">Hồ sơ công việc</Text>
+                    <div className="flex flex-wrap gap-2">
+                      {step.requiredDocuments?.map((doc: string, dIdx: number) => (
+                        <Tag key={dIdx} color="cyan" className="rounded-md border-none bg-cyan-50 text-cyan-700 font-medium text-xs">
+                          {doc}
+                        </Tag>
+                      ))}
+                      {(!step.requiredDocuments || step.requiredDocuments.length === 0) && <Text type="secondary" className="text-xs italic">Không có yêu cầu</Text>}
+                    </div>
+                  </Col>
+                </Row>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-slate-50 rounded-2xl p-12 text-center border border-dashed border-slate-200">
+            <Settings className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+            <Text className="text-slate-400 font-medium">Vui lòng chọn Mẫu quy trình để hiển thị danh sách các bước</Text>
           </div>
         )}
       </div>
@@ -475,8 +452,8 @@ export default function SurveyCampaignForm() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button 
-            icon={<ArrowLeft className="w-4 h-4" />} 
+          <Button
+            icon={<ArrowLeft className="w-4 h-4" />}
             onClick={() => router.push('/survey/campaigns')}
             className="rounded-lg hover:bg-slate-100 border-none flex items-center"
           >
@@ -484,24 +461,81 @@ export default function SurveyCampaignForm() {
           </Button>
           <div className="h-6 w-[1px] bg-slate-200" />
           <div>
-            <Title level={2} className="!mb-0 !text-slate-800 tracking-tight">
-              {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? `Chi tiết: ${campaignData?.name}` : `Chỉnh sửa: ${campaignData?.name}`)}
-            </Title>
+            <div className="flex items-center gap-3">
+              <Title level={2} className="!mb-0 !text-slate-800 tracking-tight">
+                {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? campaignData?.name : `Chỉnh sửa: ${campaignData?.name}`)}
+              </Title>
+              {!isNew && (
+                <div className="mt-1">
+                  {(() => {
+                    const status = (isView ? campaignData?.status : form.getFieldValue('status')) || 'DRAFT';
+                    const statusMap: any = {
+                      'DRAFT': { color: 'default', text: 'Bản nháp' },
+                      'ACTIVE': { color: 'processing', text: 'Đang diễn ra' },
+                      'COMPLETED': { color: 'success', text: 'Đã kết thúc' },
+                      'APPROVED': { color: 'gold', text: 'Đã phê duyệt (Synced)' },
+                      'CANCELLED': { color: 'error', text: 'Đã hủy' }
+                    };
+                    const config = statusMap[status] || statusMap['DRAFT'];
+                    return (
+                      <Tag color={config.color} className="rounded-full px-3 py-0.5 border-none font-bold text-[11px] uppercase tracking-wider shadow-sm">
+                        {config.text}
+                      </Tag>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
             <Paragraph type="secondary" className="!mb-0 text-slate-500 font-medium">
-              {isNew ? 'Khởi tạo đợt khảo sát và gán quy trình thực hiện' : 'Theo dõi và quản lý thông tin đợt khảo sát'}
+              {isNew ? 'Khởi tạo đợt khảo sát và gán quy trình thực hiện' : (isView ? 'Theo dõi tiến độ và quản lý đợt khảo sát' : 'Cập nhật thông tin và cấu hình các bước')}
             </Paragraph>
           </div>
         </div>
-        {!isView && (
+        {!isView ? (
           <Button
             type="primary"
             icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
             onClick={() => form.submit()}
-            disabled={isSubmitting}
+            disabled={isSubmitting || (isNew && !selectedWorkflowId)}
             className="rounded-xl px-8 h-11 font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-100 border-none transition-all"
           >
-            {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Tạo đợt khảo sát' : 'Lưu dữ liệu')}
+            {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Khởi tạo đợt khảo sát' : 'Lưu thay đổi')}
           </Button>
+        ) : (
+          <Space>
+            {campaignData?.status !== 'APPROVED' && (
+              <Button
+                type="primary"
+                icon={<Edit size={18} />}
+                onClick={() => {
+                  editForm.setFieldsValue({
+                    description: campaignData?.description,
+                    range: [dayjs(campaignData?.startDate), dayjs(campaignData?.endDate)]
+                  });
+                  setIsEditModalOpen(true);
+                }}
+                className="rounded-xl px-8 h-11 font-semibold bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 border-none transition-all"
+              >
+                Chỉnh sửa thông tin
+              </Button>
+            )}
+            {campaignData?.status !== 'APPROVED' && (
+              <Button
+                type="primary"
+                icon={<CheckCircle2 size={18} />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: 'Xác nhận phê duyệt',
+                    content: 'Sau khi phê duyệt, dữ liệu khảo sát sẽ được đồng bộ ngược lại vào danh mục Master Data (Chương trình đào tạo & Môn học). Bạn có chắc chắn muốn thực hiện?',
+                    onOk: handleApprove
+                  });
+                }}
+                className="rounded-xl px-8 h-11 font-semibold bg-gold-600 hover:bg-gold-700 shadow-lg shadow-gold-100 border-none transition-all bg-[#d4af37]"
+              >
+                Phê duyệt & Đồng bộ
+              </Button>
+            )}
+          </Space>
         )}
       </div>
 
@@ -514,77 +548,201 @@ export default function SurveyCampaignForm() {
             </div>
           </div>
         )}
-        {currentStep >= 0 && renderCampaignHeader()}
-        
-        {workflowSteps.length > 0 && (
-          <div className="px-12 pt-10 pb-8 bg-white border-b border-slate-50">
-            <Steps 
-              current={currentStep} 
-              className="premium-steps"
-              items={workflowSteps.map((s, idx) => ({
-                  title: s.title,
-                  status: currentStep === idx ? 'process' : (currentStep > idx ? 'finish' : 'wait')
-              }))}
-            />
+
+        {isView ? (
+          <div className="flex flex-col h-full">
+            {renderCampaignHeader()}
+            {renderExecutionProgress()}
           </div>
-        )}
+        ) : (
+          <div className="p-12">
+            <Form form={form} layout="vertical" onFinish={onFinish}>
+              <Row gutter={32}>
+                <Col span={24}>
+                  <div className="flex items-center gap-2 mb-6">
+                    <Info className="text-blue-500" size={20} />
+                    <Title level={4} className="!mb-0">Thông tin chung</Title>
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="code"
+                    label={<span className="text-sm font-semibold text-slate-700">Mã đợt khảo sát</span>}
+                    rules={[{ required: isNew, message: 'Vui lòng nhập mã đợt' }]}
+                  >
+                    <Input placeholder="Ví dụ: KS-2026-SE" className="h-11 rounded-xl shadow-sm border-slate-200" disabled={!isNew} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="name"
+                    label={<span className="text-sm font-semibold text-slate-700">Tên đợt khảo sát</span>}
+                    rules={[{ required: true, message: 'Vui lòng nhập tên đợt khảo sát' }]}
+                  >
+                    <Input placeholder="Ví dụ: Khảo sát CTĐT CNTT 2026" className="h-11 rounded-xl shadow-sm border-slate-200" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="programId"
+                    label={<span className="text-sm font-semibold text-slate-700">Chương trình đào tạo</span>}
+                    rules={[{ required: true, message: 'Vui lòng chọn chương trình' }]}
+                  >
+                    <Select placeholder="Chọn chương trình đào tạo" className="h-11 shadow-sm border-slate-200 rounded-xl">
+                      {programs.map(p => (
+                        <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="workflowId"
+                    label={<span className="text-sm font-semibold text-slate-700">Mẫu quy trình áp dụng</span>}
+                    rules={[{ required: true, message: 'Vui lòng chọn mẫu quy trình' }]}
+                  >
+                    <Select
+                      placeholder="Chọn mẫu quy trình"
+                      className="h-11 shadow-sm border-slate-200 rounded-xl"
+                      onChange={handleWorkflowChange}
+                      disabled={!isNew}
+                    >
+                      {workflows.map(w => (
+                        <Select.Option key={w.id} value={w.id}>{w.name}</Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                {!isNew && (
+                  <Col span={24}>
+                    <Form.Item
+                      name="status"
+                      label={<span className="text-sm font-semibold text-slate-700">Trạng thái đợt khảo sát</span>}
+                    >
+                      <Select className="h-11 shadow-sm border-slate-200 rounded-xl">
+                        <Select.Option value="DRAFT">Bản nháp</Select.Option>
+                        <Select.Option value="ACTIVE">Đang diễn ra</Select.Option>
+                        <Select.Option value="COMPLETED">Đã kết thúc</Select.Option>
+                        <Select.Option value="CANCELLED">Đã hủy</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                )}
+                <Col span={24}>
+                  <Form.Item
+                    name="range"
+                    label={<span className="text-sm font-semibold text-slate-700">Thời gian thực hiện</span>}
+                    rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
+                  >
+                    <DatePicker.RangePicker className="w-full h-11 rounded-xl shadow-sm border-slate-200" />
+                  </Form.Item>
+                </Col>
+                <Col span={24}>
+                  <Form.Item
+                    name="description"
+                    label={<span className="text-sm font-semibold text-slate-700">Mô tả chi tiết</span>}
+                  >
+                    <Input.TextArea rows={3} placeholder="Nhập mô tả đợt khảo sát..." className="rounded-xl shadow-sm border-slate-200" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
-        <Form form={form} layout="vertical" onFinish={onFinish} disabled={isView} className="px-12 py-2">
-           {renderStepContent(currentStep)}
-        </Form>
+              <Divider className="my-8" />
 
-        {(!isNew || isView) && (
-          <div className="p-8 border-t border-slate-100 flex justify-between bg-slate-50/30">
-            <Button
-              disabled={currentStep === -1 || (!isNew && currentStep === 0)}
-              onClick={prev}
-              icon={<ArrowLeft size={16} />}
-              className="h-11 px-6 rounded-xl flex items-center"
-            >
-              Quay lại
-            </Button>
-            
-            {currentStep < totalSteps - 1 ? (
-              <Button
-                type="primary"
-                onClick={next}
-                className="h-11 px-8 rounded-xl flex items-center gap-2 bg-blue-600 shadow-md"
-                disabled={currentStep === -1 && !selectedWorkflowId}
-              >
-                Tiếp tục <ArrowRight size={16} />
-              </Button>
-            ) : (
-              !isView && (
-                <Button
-                  type="primary"
-                  onClick={() => form.submit()}
-                  className="h-11 px-10 rounded-xl flex items-center gap-2 bg-emerald-600 shadow-md"
-                >
-                  Hoàn tất <CheckCircle2 size={16} />
-                </Button>
-              )
-            )}
+              {renderConfigSteps()}
+            </Form>
           </div>
         )}
       </Card>
 
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <Edit className="text-blue-500" size={20} />
+            <span className="text-lg font-bold text-slate-800">Chỉnh sửa thông tin đợt khảo sát</span>
+          </div>
+        }
+        open={isEditModalOpen}
+        onCancel={() => setIsEditModalOpen(false)}
+        onOk={() => {
+          editForm.validateFields().then(async (values) => {
+            try {
+              setIsSubmitting(true);
+              const { range, ...rest } = values;
+              const updateData = {
+                ...campaignData,
+                ...rest,
+                startDate: range[0].toISOString(),
+                endDate: range[1].toISOString(),
+                steps: campaignData.steps.map((s: any) => ({
+                  ...s,
+                  deadline: s.deadline // Keep existing deadlines
+                }))
+              };
+              await surveyCampaignService.update(id, updateData);
+              message.success('Cập nhật thông tin thành công');
+              setIsEditModalOpen(false);
+              // Refresh data
+              const refreshed = await surveyCampaignService.getById(id);
+              setCampaignData(refreshed);
+            } catch (error) {
+              message.error('Lỗi khi cập nhật thông tin');
+            } finally {
+              setIsSubmitting(false);
+            }
+          });
+        }}
+        okText="Lưu thay đổi"
+        cancelText="Hủy"
+        className="rounded-2xl"
+        confirmLoading={isSubmitting}
+      >
+        <Form form={editForm} layout="vertical" className="mt-4">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Chương trình đào tạo</span>}>
+                <Input value={campaignData?.programName || campaignData?.program?.name} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Mẫu quy trình</span>}>
+                <Input value={campaignData?.workflowTemplateName || campaignData?.workflow?.name} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Trạng thái hiện tại</span>}>
+                <Input value={campaignData?.status === 'DRAFT' ? 'Bản nháp' : (campaignData?.status === 'ACTIVE' ? 'Đang diễn ra' : 'Đã kết thúc')} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="range"
+                label={<span className="text-sm font-semibold text-slate-700">Thời gian thực hiện khảo sát</span>}
+                rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
+              >
+                <DatePicker.RangePicker className="w-full h-11 rounded-xl" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="description"
+            label={<span className="text-sm font-semibold text-slate-700">Mô tả chi tiết</span>}
+          >
+            <Input.TextArea rows={4} placeholder="Nhập mô tả đợt khảo sát..." className="rounded-xl" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       <style jsx global>{`
-        .premium-steps .ant-steps-item-process .ant-steps-item-icon {
-          background-color: #2563eb;
-          border-color: #2563eb;
-        }
-        .premium-steps .ant-steps-item-finish .ant-steps-item-icon {
-          border-color: #10b981;
-          color: #10b981;
-        }
-        .premium-steps .ant-steps-item-finish .ant-steps-item-tail::after {
-          background-color: #10b981;
-        }
         .ant-form-item-label label {
           margin-bottom: 4px;
         }
         .ant-input-disabled, .ant-select-disabled .ant-select-selector, .ant-picker-disabled {
-          background-color: #fff !important;
+          background-color: #f8fafc !important;
           color: #1e293b !important;
           cursor: default !important;
           border-color: #e2e8f0 !important;

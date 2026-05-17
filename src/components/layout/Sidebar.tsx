@@ -50,14 +50,6 @@ const NAV_ITEMS: NavItemProps[] = [
     ],
   },
   {
-    id: 'operations',
-    label: 'Vận hành',
-    icon: ClipboardList,
-    children: [
-      { id: 'cycles', label: 'Chu kỳ đào tạo', path: '/cycles' },
-    ],
-  },
-  {
     id: 'master-data',
     label: 'Dữ liệu gốc',
     icon: GraduationCap,

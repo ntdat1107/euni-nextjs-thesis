@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { 
   Table, 
@@ -13,120 +13,94 @@ import {
   Statistic,
   Tag,
   Button,
-  Tooltip
+  Tooltip,
+  App as AntdApp
 } from 'antd';
 import { 
   Search, 
   RefreshCw,
   Layers,
-  Settings,
-  Eye,
-  Box
+  Box,
+  FileText
 } from 'lucide-react';
+import { workflowDefinitionService, WorkflowStepDefinitionResponse } from '@/services/workflowDefinitionService';
 
 const { Title, Text } = Typography;
 
-// Hardcoded data as requested
-const MASTER_STEPS_DATA = [
-  {
-    id: '1',
-    code: 'STEP_DANG_KY',
-    name: 'Đăng ký hồ sơ',
-    description: 'Bước khởi tạo hồ sơ bởi người dùng',
-    screenCode: 'REGISTRATION_FORM',
-    performerRole: 'USER',
-    approverRole: null,
-    status: 'ACTIVE'
-  },
-  {
-    id: '2',
-    code: 'STEP_THAM_DINH',
-    name: 'Thẩm định hồ sơ',
-    description: 'Chuyên viên kiểm tra tính hợp lệ của hồ sơ',
-    screenCode: 'REVIEW_FORM',
-    performerRole: 'SPECIALIST',
-    approverRole: 'MANAGER',
-    status: 'ACTIVE'
-  },
-  {
-    id: '3',
-    code: 'STEP_PHE_DUYET',
-    name: 'Phê duyệt',
-    description: 'Lãnh đạo phê duyệt hồ sơ cuối cùng',
-    screenCode: 'APPROVAL_FORM',
-    performerRole: 'MANAGER',
-    approverRole: 'DIRECTOR',
-    status: 'ACTIVE'
-  },
-  {
-    id: '4',
-    code: 'STEP_BO_SUNG',
-    name: 'Yêu cầu bổ sung',
-    description: 'Gửi yêu cầu người dùng cập nhật thêm tài liệu',
-    screenCode: 'REVISION_FORM',
-    performerRole: 'USER',
-    approverRole: 'SPECIALIST',
-    status: 'ACTIVE'
-  },
-  {
-    id: '5',
-    code: 'STEP_BAN_HANH',
-    name: 'Ban hành kết quả',
-    description: 'Gửi thông báo kết quả cho người dùng',
-    screenCode: 'RESULT_NOTICE',
-    performerRole: 'SYSTEM',
-    approverRole: null,
-    status: 'ACTIVE'
-  }
-];
-
 function MasterStepsContent() {
+  const { message } = AntdApp.useApp();
   const [searchText, setSearchText] = useState('');
+  const [data, setData] = useState<WorkflowStepDefinitionResponse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredData = MASTER_STEPS_DATA.filter(item => 
-    item.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    item.code.toLowerCase().includes(searchText.toLowerCase())
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const result = await workflowDefinitionService.getAll();
+      setData(result);
+    } catch (error) {
+      message.error('Lỗi khi tải danh sách bước mẫu');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const filteredData = data.filter(item => 
+    item.stepName.toLowerCase().includes(searchText.toLowerCase()) ||
+    item.stepCode.toLowerCase().includes(searchText.toLowerCase())
   );
 
   const columns = [
     {
       title: 'Bước mẫu',
       key: 'step',
-      render: (_: any, record: any) => (
+      render: (_: any, record: WorkflowStepDefinitionResponse) => (
         <div className="flex items-center gap-3 py-1">
           <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100">
             <Layers className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <div className="font-bold text-slate-900">{record.name}</div>
-            <div className="text-xs text-slate-500 font-medium font-mono uppercase tracking-tight">{record.code}</div>
+            <div className="font-bold text-slate-900">{record.stepName}</div>
+            <div className="text-xs text-slate-500 font-medium font-mono uppercase tracking-tight">{record.stepCode}</div>
           </div>
         </div>
       ),
     },
     {
-      title: 'Mô tả',
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true,
-      render: (text: string) => <span className="text-slate-500 text-sm italic">{text || '---'}</span>
+      title: 'Loại quy trình',
+      dataIndex: 'workflowType',
+      key: 'workflowType',
+      render: (type: string) => (
+        <Tag color={type === 'SURVEY_CREATE' ? 'blue' : 'green'} className="rounded-md px-2 py-0.5 border-none font-medium">
+          {type === 'SURVEY_CREATE' ? 'Khảo sát tạo mới' : 'Khảo sát cập nhật'}
+        </Tag>
+      )
     },
     {
-      title: 'Thao tác',
-      key: 'actions',
-      align: 'right' as const,
-      render: (_: any, record: any) => (
-        <Space>
-          <Tooltip title="Xem chi tiết">
-            <Button 
-              type="text" 
-              icon={<Eye className="w-4 h-4 text-indigo-500" />} 
-              className="hover:bg-indigo-50 rounded-lg"
-            />
-          </Tooltip>
-        </Space>
-      ),
+      title: 'Hồ sơ công việc (Yêu cầu)',
+      dataIndex: 'requiredDocuments',
+      key: 'requiredDocuments',
+      render: (docs: string[]) => (
+        <div className="flex flex-wrap gap-1 max-w-xs">
+          {docs?.map((doc, idx) => (
+            <Tag key={idx} className="bg-slate-50 border-slate-200 text-slate-500 text-[10px] rounded-md">
+              {doc}
+            </Tag>
+          ))}
+          {(!docs || docs.length === 0) && <Text type="secondary" className="text-xs italic">Không có yêu cầu</Text>}
+        </div>
+      )
     },
+    {
+      title: 'Loại bước',
+      dataIndex: 'type',
+      key: 'type',
+      render: (type: string) => <Text className="text-slate-600 font-medium">{type || '---'}</Text>
+    }
   ];
 
   return (
@@ -138,8 +112,15 @@ function MasterStepsContent() {
             <Box className="text-indigo-600" size={32} />
             Kho bước mẫu
           </Title>
-          <Text className="text-slate-500 font-medium italic">Thư viện các bước nghiệp vụ mẫu có sẵn để tái sử dụng trong các quy trình.</Text>
+          <Text className="text-slate-500 font-medium italic">Thư viện các bước nghiệp vụ mẫu được đồng bộ từ hệ thống.</Text>
         </div>
+        <Button 
+          icon={<RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />} 
+          onClick={fetchData}
+          disabled={isLoading}
+        >
+          Làm mới
+        </Button>
       </div>
 
       {/* Stats */}
@@ -148,7 +129,8 @@ function MasterStepsContent() {
           <Card className="card-premium">
             <Statistic 
               title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Tổng số bước mẫu</span>}
-              value={MASTER_STEPS_DATA.length} 
+              value={data.length} 
+              loading={isLoading}
               formatter={(val) => <span className="font-outfit font-extrabold">{val}</span>}
               styles={{ content: { color: '#0f172a' } }}
             />
@@ -166,12 +148,12 @@ function MasterStepsContent() {
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
-          <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg h-10 w-10 flex items-center justify-center" />
         </div>
         <Table 
           dataSource={filteredData} 
           columns={columns} 
           rowKey="id"
+          loading={isLoading}
           pagination={{ 
             pageSize: 10,
             showSizeChanger: false,
@@ -187,7 +169,9 @@ function MasterStepsContent() {
 export default function MasterStepsPage() {
   return (
     <AppShell>
-      <MasterStepsContent />
+      <AntdApp>
+        <MasterStepsContent />
+      </AntdApp>
     </AppShell>
   );
 }

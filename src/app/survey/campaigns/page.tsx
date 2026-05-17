@@ -67,8 +67,11 @@ export default function SurveyCampaignsPage() {
         return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full px-3">Đang diễn ra</Tag>;
       case 'DRAFT':
         return <Tag icon={<AlertCircle size={12} />} color="warning" className="rounded-full px-3">Bản nháp</Tag>;
+      case 'COMPLETED':
       case 'CLOSED':
-        return <Tag icon={<Clock size={12} />} color="default" className="rounded-full px-3">Đã đóng</Tag>;
+        return <Tag icon={<Clock size={12} />} color="default" className="rounded-full px-3">Đã kết thúc</Tag>;
+      case 'APPROVED':
+        return <Tag icon={<CheckCircle2 size={12} />} color="gold" className="rounded-full px-3">Đã phê duyệt (Synced)</Tag>;
       default:
         return <Tag className="rounded-full px-3">{status}</Tag>;
     }
@@ -130,7 +133,7 @@ export default function SurveyCampaignsPage() {
             <Button
               type="text"
               icon={<Eye size={18} className="text-blue-500" />}
-              onClick={() => router.push(`/survey/campaigns/${record.id}?mode=view`)}
+              onClick={() => router.push(`/survey/campaigns/${record.id}`)}
               className="hover:bg-blue-50"
             />
           </Tooltip>
