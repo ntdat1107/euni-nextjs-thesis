@@ -24,8 +24,10 @@ export interface SurveyCampaignStepResponse {
   stepIndex: number;
   stepName: string;
   deadline?: string;
-  requiredDocuments: string[];
-  configuration: Record<string, any>;
+  requiredDocuments: string;
+  configuration: string; // JSON string from backend
+  status: string;
+  resultData?: string; // JSON string from backend
 }
 
 export interface SurveyCampaignResponse {
@@ -34,7 +36,6 @@ export interface SurveyCampaignResponse {
   name: string;
   description?: string;
   programId: string;
-  programCode?: string;
   programName?: string;
   workflowTemplateId: string;
   workflowTemplateName?: string;
@@ -67,5 +68,13 @@ export const surveyCampaignService = {
   
   checkCode: async (code: string): Promise<boolean> => {
     return api.get(`/survey/campaigns/check-code?code=${code}`);
+  },
+
+  saveStepData: async (campaignId: string, stepId: string, resultData: any): Promise<SurveyCampaignStepResponse> => {
+    return api.post(`/survey/campaigns/${campaignId}/steps/${stepId}/save`, { resultData: JSON.stringify(resultData) });
+  },
+
+  approve: async (id: string): Promise<void> => {
+    return api.post(`/survey/campaigns/${id}/approve`);
   }
 };

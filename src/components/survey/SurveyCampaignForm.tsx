@@ -5,12 +5,13 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   Typography, Card, Button, Space, Breadcrumb, Form, Input,
   Select, Divider, Row, Col, DatePicker, App as AntdApp,
-  Empty, Checkbox, Tag, Tooltip, Progress
+  Empty, Checkbox, Tag, Tooltip, Progress,
+  Modal
 } from 'antd';
 import {
   ArrowLeft, Save, CheckCircle2,
   Settings, FileText, Users, Calendar, Info, Loader2,
-  ChevronRight, PlayCircle, ClipboardList, Clock, AlertCircle
+  ChevronRight, PlayCircle, ClipboardList, Clock, AlertCircle, Edit
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { programService } from '@/services/programService';
@@ -29,8 +30,7 @@ export default function SurveyCampaignForm() {
 
   const id = params?.id as string;
   const isNew = !id || id === 'new';
-  const mode = searchParams.get('mode');
-  const isView = !isNew && mode !== 'edit';
+  const isView = !isNew;
 
   const [form] = Form.useForm();
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
@@ -43,6 +43,10 @@ export default function SurveyCampaignForm() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [stepDefinitions, setStepDefinitions] = useState<WorkflowStepDefinitionResponse[]>([]);
   const [campaignData, setCampaignData] = useState<any>(null);
+  const [isStepModalOpen, setIsStepModalOpen] = useState(false);
+  const [selectedStep, setSelectedStep] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm] = Form.useForm();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -79,13 +83,18 @@ export default function SurveyCampaignForm() {
             workflowId: data.workflowTemplateId
           });
           setSelectedWorkflowId(data.workflowTemplateId);
-          setWorkflowSteps(data.steps.map(s => ({
-            id: s.id,
-            title: s.stepName,
-            deadline: s.deadline ? dayjs(s.deadline) : null,
-            requiredDocuments: s.requiredDocuments,
-            configuration: s.configuration
-          })));
+          setWorkflowSteps(data.steps.map(s => {
+            // Parse configuration if it's a string
+            const config = typeof s.configuration === 'string' ? JSON.parse(s.configuration) : (s.configuration || {});
+            return {
+              id: s.id,
+              title: s.stepName,
+              deadline: s.deadline ? dayjs(s.deadline) : null,
+              requiredDocuments: typeof s.requiredDocuments === 'string' ? JSON.parse(s.requiredDocuments) : (s.requiredDocuments || []),
+              configuration: config,
+              status: s.status
+            };
+          }));
         } catch (error) {
           message.error('Lỗi khi tải chi tiết đợt khảo sát');
         } finally {
@@ -95,6 +104,21 @@ export default function SurveyCampaignForm() {
       fetchCampaign();
     }
   }, [id, isNew, form, message]);
+
+  const handleApprove = async () => {
+    try {
+      setIsSubmitting(true);
+      await surveyCampaignService.approve(id);
+      message.success('Đã phê duyệt đợt khảo sát và đồng bộ dữ liệu Master Data thành công!');
+      // Refresh data
+      const data = await surveyCampaignService.getById(id);
+      setCampaignData(data);
+    } catch (error: any) {
+      message.error(error.message || 'Lỗi khi phê duyệt đợt khảo sát');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (isNew && selectedWorkflowId && workflows.length > 0) {
@@ -215,7 +239,7 @@ export default function SurveyCampaignForm() {
             </Text>
           </Col>
           <Col span={8}>
-            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Thời gian hiệu lực</Text>
+            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Thời gian khảo sát</Text>
             <Text className="text-slate-700 font-semibold flex items-center gap-2">
               <Calendar size={14} className="text-emerald-500" />
               {data?.startDate ? `${dayjs(data.startDate).format('DD/MM/YYYY')} - ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
@@ -314,17 +338,22 @@ export default function SurveyCampaignForm() {
                     </div>
                   </td>
                   <td className="px-4 py-5">
-                    <Tag icon={<AlertCircle size={12} />} className="rounded-full border-amber-100 bg-amber-50 text-amber-600 font-medium flex items-center gap-1 w-fit">
-                      Chờ khởi tạo
-                    </Tag>
+                    {(() => {
+                      const status = (step.status || '').toUpperCase();
+                      if (status === 'COMPLETED') return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full">Hoàn thành</Tag>;
+                      if (status === 'ACTIVE') return <Tag icon={<Clock size={12} />} color="processing" className="rounded-full">Đang thực hiện</Tag>;
+                      return <Tag icon={<AlertCircle size={12} />} color="default" className="rounded-full">Chờ khởi tạo</Tag>;
+                    })()}
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <Tooltip title="Xem chi tiết">
+                    <Tooltip title="Xem chi tiết bước">
                       <Button
                         type="text"
                         icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
                         className="flex items-center justify-center ml-auto hover:bg-blue-50 rounded-full w-9 h-9"
-                        onClick={() => message.info('Chức năng xem chi tiết bước đang được phát triển')}
+                        onClick={() => {
+                          router.push(`/survey/campaigns/${id}/steps/${step.id || idx}`);
+                        }}
                       />
                     </Tooltip>
                   </td>
@@ -441,9 +470,10 @@ export default function SurveyCampaignForm() {
                   {(() => {
                     const status = (isView ? campaignData?.status : form.getFieldValue('status')) || 'DRAFT';
                     const statusMap: any = {
-                      'DRAFT': { color: 'default', text: 'Nháp' },
-                      'ACTIVE': { color: 'processing', text: 'Đang hoạt động' },
-                      'COMPLETED': { color: 'success', text: 'Hoàn thành' },
+                      'DRAFT': { color: 'default', text: 'Bản nháp' },
+                      'ACTIVE': { color: 'processing', text: 'Đang diễn ra' },
+                      'COMPLETED': { color: 'success', text: 'Đã kết thúc' },
+                      'APPROVED': { color: 'gold', text: 'Đã phê duyệt (Synced)' },
                       'CANCELLED': { color: 'error', text: 'Đã hủy' }
                     };
                     const config = statusMap[status] || statusMap['DRAFT'];
@@ -461,7 +491,7 @@ export default function SurveyCampaignForm() {
             </Paragraph>
           </div>
         </div>
-        {!isView && (
+        {!isView ? (
           <Button
             type="primary"
             icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
@@ -471,6 +501,41 @@ export default function SurveyCampaignForm() {
           >
             {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Khởi tạo đợt khảo sát' : 'Lưu thay đổi')}
           </Button>
+        ) : (
+          <Space>
+            {campaignData?.status !== 'APPROVED' && (
+              <Button
+                type="primary"
+                icon={<Edit size={18} />}
+                onClick={() => {
+                  editForm.setFieldsValue({
+                    description: campaignData?.description,
+                    range: [dayjs(campaignData?.startDate), dayjs(campaignData?.endDate)]
+                  });
+                  setIsEditModalOpen(true);
+                }}
+                className="rounded-xl px-8 h-11 font-semibold bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 border-none transition-all"
+              >
+                Chỉnh sửa thông tin
+              </Button>
+            )}
+            {campaignData?.status !== 'APPROVED' && (
+              <Button
+                type="primary"
+                icon={<CheckCircle2 size={18} />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: 'Xác nhận phê duyệt',
+                    content: 'Sau khi phê duyệt, dữ liệu khảo sát sẽ được đồng bộ ngược lại vào danh mục Master Data (Chương trình đào tạo & Môn học). Bạn có chắc chắn muốn thực hiện?',
+                    onOk: handleApprove
+                  });
+                }}
+                className="rounded-xl px-8 h-11 font-semibold bg-gold-600 hover:bg-gold-700 shadow-lg shadow-gold-100 border-none transition-all bg-[#d4af37]"
+              >
+                Phê duyệt & Đồng bộ
+              </Button>
+            )}
+          </Space>
         )}
       </div>
 
@@ -555,9 +620,9 @@ export default function SurveyCampaignForm() {
                       label={<span className="text-sm font-semibold text-slate-700">Trạng thái đợt khảo sát</span>}
                     >
                       <Select className="h-11 shadow-sm border-slate-200 rounded-xl">
-                        <Select.Option value="DRAFT">Nháp</Select.Option>
-                        <Select.Option value="ACTIVE">Đang hoạt động</Select.Option>
-                        <Select.Option value="COMPLETED">Hoàn thành</Select.Option>
+                        <Select.Option value="DRAFT">Bản nháp</Select.Option>
+                        <Select.Option value="ACTIVE">Đang diễn ra</Select.Option>
+                        <Select.Option value="COMPLETED">Đã kết thúc</Select.Option>
                         <Select.Option value="CANCELLED">Đã hủy</Select.Option>
                       </Select>
                     </Form.Item>
@@ -589,6 +654,88 @@ export default function SurveyCampaignForm() {
           </div>
         )}
       </Card>
+
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <Edit className="text-blue-500" size={20} />
+            <span className="text-lg font-bold text-slate-800">Chỉnh sửa thông tin đợt khảo sát</span>
+          </div>
+        }
+        open={isEditModalOpen}
+        onCancel={() => setIsEditModalOpen(false)}
+        onOk={() => {
+          editForm.validateFields().then(async (values) => {
+            try {
+              setIsSubmitting(true);
+              const { range, ...rest } = values;
+              const updateData = {
+                ...campaignData,
+                ...rest,
+                startDate: range[0].toISOString(),
+                endDate: range[1].toISOString(),
+                steps: campaignData.steps.map((s: any) => ({
+                  ...s,
+                  deadline: s.deadline // Keep existing deadlines
+                }))
+              };
+              await surveyCampaignService.update(id, updateData);
+              message.success('Cập nhật thông tin thành công');
+              setIsEditModalOpen(false);
+              // Refresh data
+              const refreshed = await surveyCampaignService.getById(id);
+              setCampaignData(refreshed);
+            } catch (error) {
+              message.error('Lỗi khi cập nhật thông tin');
+            } finally {
+              setIsSubmitting(false);
+            }
+          });
+        }}
+        okText="Lưu thay đổi"
+        cancelText="Hủy"
+        className="rounded-2xl"
+        confirmLoading={isSubmitting}
+      >
+        <Form form={editForm} layout="vertical" className="mt-4">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Chương trình đào tạo</span>}>
+                <Input value={campaignData?.programName || campaignData?.program?.name} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Mẫu quy trình</span>}>
+                <Input value={campaignData?.workflowTemplateName || campaignData?.workflow?.name} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label={<span className="text-sm font-semibold text-slate-700">Trạng thái hiện tại</span>}>
+                <Input value={campaignData?.status === 'DRAFT' ? 'Bản nháp' : (campaignData?.status === 'ACTIVE' ? 'Đang diễn ra' : 'Đã kết thúc')} disabled className="rounded-xl bg-slate-50 border-slate-200" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="range"
+                label={<span className="text-sm font-semibold text-slate-700">Thời gian thực hiện khảo sát</span>}
+                rules={[{ required: true, message: 'Vui lòng chọn thời gian' }]}
+              >
+                <DatePicker.RangePicker className="w-full h-11 rounded-xl" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="description"
+            label={<span className="text-sm font-semibold text-slate-700">Mô tả chi tiết</span>}
+          >
+            <Input.TextArea rows={4} placeholder="Nhập mô tả đợt khảo sát..." className="rounded-xl" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <style jsx global>{`
         .ant-form-item-label label {
