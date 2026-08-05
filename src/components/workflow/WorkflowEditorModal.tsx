@@ -160,7 +160,20 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
       try {
         const content = JSON.parse(data.jsonContent);
         if (content.type === 'linear' && Array.isArray(content.steps)) {
-          setSteps(content.steps);
+          const nodes = content.nodes || [];
+          const mappedSteps = content.steps.map((s: any) => {
+            const nodeMatch = nodes.find((n: any) => n.id === s.tempId || n.data?.screenCode === s.screenCode);
+            const prereqs = Array.isArray(s.prerequisiteStepCodes) 
+              ? s.prerequisiteStepCodes 
+              : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : 
+                (Array.isArray(nodeMatch?.data?.prerequisiteStepCodes) ? nodeMatch.data.prerequisiteStepCodes : (nodeMatch?.data?.prerequisiteStepCode ? [nodeMatch.data.prerequisiteStepCode] : [])));
+            return {
+              ...s,
+              prerequisiteStepCodes: prereqs,
+              prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
+            };
+          });
+          setSteps(mappedSteps);
         }
       } catch (e) {
         console.error('Failed to parse workflow steps');
@@ -177,6 +190,8 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
       screenCode: '',
       executorRole: '',
       approverRole: '',
+      prerequisiteStepCodes: [],
+      prerequisiteStepCode: '',
       isRequired: true,
       orderNo: steps.length + 1
     };
@@ -241,19 +256,26 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
         position: { x: 50, y: 150 },
         data: { label: 'Bắt đầu' }
       },
-      ...steps.map((s, i) => ({
-        id: s.tempId,
-        type: 'state',
-        position: { x: 300 + i * 400, y: 150 },
-        data: { 
-          label: s.name, 
-          orderNo: i + 1,
-          screenCode: s.screenCode,
-          performerRole: s.executorRole,
-          approverRole: s.approverRole,
-          requiredDocuments: s.requiredDocuments
-        }
-      })),
+      ...steps.map((s, i) => {
+        const prereqs = Array.isArray(s.prerequisiteStepCodes) 
+          ? s.prerequisiteStepCodes 
+          : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : []);
+        return {
+          id: s.tempId,
+          type: 'state',
+          position: { x: 300 + i * 400, y: 150 },
+          data: { 
+            label: s.name, 
+            orderNo: i + 1,
+            screenCode: s.screenCode,
+            performerRole: s.executorRole,
+            approverRole: s.approverRole,
+            requiredDocuments: s.requiredDocuments,
+            prerequisiteStepCodes: prereqs,
+            prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
+          }
+        };
+      }),
       {
         id: 'node-end',
         type: 'end',

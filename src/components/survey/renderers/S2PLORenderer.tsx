@@ -414,14 +414,11 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                   <td className="border border-slate-200 p-2 font-medium text-slate-700">{getPeoCode(peoIdx)}</td>
                   {state.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => (
                     <td key={`${peoIdx}-${ploIdx}-${piIdx}`} className="border border-slate-200 p-2 text-center border-l">
-                      {readonly ? (
-                        <span className="font-semibold text-brand-600">{state.matrix?.[peoIdx]?.[ploIdx]?.[piIdx] ? "✓" : ""}</span>
-                      ) : (
-                        <Checkbox
-                          checked={state.matrix?.[peoIdx]?.[ploIdx]?.[piIdx] || false}
-                          onChange={() => toggleMatrix(peoIdx, ploIdx, piIdx)}
-                        />
-                      )}
+                      <Checkbox
+                        checked={!!state.matrix?.[peoIdx]?.[ploIdx]?.[piIdx]}
+                        disabled={readonly}
+                        onChange={() => toggleMatrix(peoIdx, ploIdx, piIdx)}
+                      />
                     </td>
                   )))}
                 </tr>
@@ -430,6 +427,20 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
           </table>
         </div>
       </section>
+
+      <style jsx global>{`
+        .ant-checkbox-disabled .ant-checkbox-inner {
+          background-color: #f8fafc !important;
+          border-color: #cbd5e1 !important;
+        }
+        .ant-checkbox-disabled.ant-checkbox-checked .ant-checkbox-inner {
+          background-color: #2563eb !important;
+          border-color: #2563eb !important;
+        }
+        .ant-checkbox-disabled.ant-checkbox-checked .ant-checkbox-inner::after {
+          border-color: #ffffff !important;
+        }
+      `}</style>
     </div>
   );
 };

@@ -35,7 +35,9 @@ import {
   Layout,
   BookOpen,
   ArrowLeft,
-  Eye
+  Eye,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
 import { useMajors } from '@/hooks/useMajors';
@@ -70,19 +72,26 @@ function ProgramManagementContent() {
   const [selectedMajorId, setSelectedMajorId] = useState<string | undefined>(initialMajorId);
   const [searchText, setSearchText] = useState('');
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+  const [draftCourseIds, setDraftCourseIds] = useState<string[]>([]);
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
   const [isEditMode, setIsEditMode] = useState(false);
+
+  const hasCourseChanges = React.useMemo(() => {
+    if (selectedCourseIds.length !== draftCourseIds.length) return true;
+    const setA = new Set(selectedCourseIds);
+    return draftCourseIds.some(id => !setA.has(id));
+  }, [selectedCourseIds, draftCourseIds]);
 
   const handleOpenDetail = async (program?: Program) => {
     if (program) {
       setEditingProgram(program);
       setIsEditMode(false);
       form.setFieldsValue(program);
-      // Fetch courses for this program
       try {
         const currentCourseIds = await programService.getCourses(program.id);
         setSelectedCourseIds(currentCourseIds);
+        setDraftCourseIds(currentCourseIds);
       } catch (e) {
         message.error('Không thể tải danh sách môn học');
       }
@@ -91,6 +100,7 @@ function ProgramManagementContent() {
       setIsEditMode(true);
       form.resetFields();
       setSelectedCourseIds([]);
+      setDraftCourseIds([]);
     }
     setViewState('EDIT');
     setActiveTab('1');
@@ -102,6 +112,10 @@ function ProgramManagementContent() {
   };
 
   const handleSubmit = async (values: any) => {
+    if (editingProgram?.hasUncompletedCampaign) {
+      message.error('Chương trình đào tạo đang có đợt khảo sát chưa hoàn thành, không thể chỉnh sửa!');
+      return;
+    }
     try {
       const metadata = {
         name: values.name,
@@ -118,10 +132,16 @@ function ProgramManagementContent() {
         const newProgram = await createProgram(metadata);
         setEditingProgram(newProgram);
       }
-    } catch (e) { }
+    } catch (e: any) {
+      message.error(e?.message || 'Lỗi khi cập nhật chương trình');
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (program: Program) => {
+    if (program.hasUncompletedCampaign) {
+      message.error('Không thể xóa chương trình đào tạo đang có đợt khảo sát chưa hoàn thành!');
+      return;
+    }
     modal.confirm({
       title: 'Xác nhận xóa chương trình đào tạo?',
       content: 'Hành động này không thể hoàn tác.',
@@ -129,24 +149,33 @@ function ProgramManagementContent() {
       okType: 'danger',
       cancelText: 'Hủy',
       onOk: () => {
-        deleteProgram(id);
+        deleteProgram(program.id);
       }
     });
   };
 
-
-  const handleAssignCourses = async (courseIds: string[]) => {
-    if (!isEditMode) return;
-    
+  const handleSaveCourses = async () => {
     if (!editingProgram) {
       message.warning('Vui lòng lưu thông tin chung trước khi gán môn học');
       setActiveTab('1');
       return;
     }
+    if (editingProgram.hasUncompletedCampaign) {
+      message.error('Chương trình đào tạo đang có đợt khảo sát chưa hoàn thành, không thể chỉnh sửa môn học!');
+      return;
+    }
     try {
-      await assignCourses({ id: editingProgram.id, courseIds });
-      setSelectedCourseIds(courseIds);
-    } catch (e) { }
+      await assignCourses({ id: editingProgram.id, courseIds: draftCourseIds });
+      setSelectedCourseIds(draftCourseIds);
+      message.success('Đã lưu danh sách môn học thành công!');
+    } catch (e: any) {
+      message.error(e?.message || 'Lỗi khi lưu danh sách môn học');
+    }
+  };
+
+  const handleCancelCourseChanges = () => {
+    setDraftCourseIds(selectedCourseIds);
+    message.info('Đã hủy bỏ các thay đổi môn học chưa lưu');
   };
 
   const getStatusTag = (status: string) => {
@@ -185,7 +214,16 @@ function ProgramManagementContent() {
             <Layout className="w-5 h-5 text-brand-600" />
           </div>
           <div>
-            <div className="font-bold text-slate-900">{record.name}</div>
+            <div className="flex items-center gap-2 font-bold text-slate-900">
+              {record.name}
+              {record.hasUncompletedCampaign && (
+                <Tooltip title="Đang có đợt khảo sát chưa hoàn thành (Không được chỉnh sửa/xóa)">
+                  <Tag color="warning" icon={<AlertTriangle className="w-3 h-3" />} className="rounded-full px-2 py-0.5 border-0 font-bold text-[10px]">
+                    Đang khảo sát
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
             <div className="text-xs text-slate-500 font-medium">Mã CT: {record.code}</div>
           </div>
         </div>
@@ -217,12 +255,13 @@ function ProgramManagementContent() {
               className="hover:bg-blue-50 rounded-lg"
             />
           </Tooltip>
-          <Tooltip title="Xóa">
+          <Tooltip title={record.hasUncompletedCampaign ? "Chương trình đang có đợt khảo sát chưa hoàn thành" : "Xóa"}>
             <Button
               type="text"
               danger
+              disabled={record.hasUncompletedCampaign}
               icon={<Trash2 className="w-4 h-4" />}
-              onClick={() => handleDelete(record.id)}
+              onClick={() => handleDelete(record)}
               className="hover:bg-rose-50 rounded-lg"
             />
           </Tooltip>
@@ -329,19 +368,33 @@ function ProgramManagementContent() {
                 </span>
               </div>
               {editingProgram && !isEditMode && (
-                <Button 
-                  type="primary" 
-                  ghost
-                  icon={<Edit3 className="w-4 h-4" />}
-                  onClick={() => setIsEditMode(true)}
-                  className="rounded-xl border-brand-200 text-brand-600 hover:text-brand-700 hover:border-brand-300"
-                >
-                  Chỉnh sửa thông tin
-                </Button>
+                <Tooltip title={editingProgram.hasUncompletedCampaign ? "Chương trình đang có đợt khảo sát chưa hoàn thành, không thể chỉnh sửa" : ""}>
+                  <Button 
+                    type="primary" 
+                    ghost
+                    disabled={editingProgram.hasUncompletedCampaign}
+                    icon={<Edit3 className="w-4 h-4" />}
+                    onClick={() => setIsEditMode(true)}
+                    className="rounded-xl border-brand-200 text-brand-600 hover:text-brand-700 hover:border-brand-300"
+                  >
+                    Chỉnh sửa thông tin
+                  </Button>
+                </Tooltip>
               )}
             </div>
           }
         >
+          {editingProgram?.hasUncompletedCampaign && (
+            <Alert
+              message="Đang có đợt khảo sát chưa hoàn thành"
+              description="Chương trình đào tạo này đang liên kết với một Đợt khảo sát chưa hoàn thành (chưa Phê duyệt). Để đảm bảo tính nhất quán dữ liệu khảo sát, việc chỉnh sửa thông tin chương trình hoặc thay đổi môn học tạm thời bị khóa."
+              type="warning"
+              showIcon
+              icon={<AlertTriangle className="w-5 h-5 text-amber-600" />}
+              className="rounded-2xl border-amber-200 bg-amber-50/80 mb-6 text-amber-900 shadow-sm"
+            />
+          )}
+
           <Tabs 
             activeKey={activeTab} 
             onChange={setActiveTab}
@@ -365,7 +418,7 @@ function ProgramManagementContent() {
                             label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Tên chương trình</span>}
                             rules={[{ required: true, message: 'Vui lòng nhập tên chương trình' }]}
                           >
-                            <Input placeholder="Ví dụ: Công nghệ thông tin (Chương trình tiên tiến)" className="rounded-xl h-11" disabled={!isEditMode} />
+                            <Input placeholder="Ví dụ: Công nghệ thông tin (Chương trình tiên tiến)" className="rounded-xl h-11" disabled={!isEditMode || editingProgram?.hasUncompletedCampaign} />
                           </Form.Item>
                         </div>
                         <Form.Item
@@ -373,14 +426,14 @@ function ProgramManagementContent() {
                           label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã chương trình</span>}
                           rules={[{ required: true, message: 'Vui lòng nhập mã chương trình' }]}
                         >
-                          <Input placeholder="Ví dụ: CTDT-IT-2026" className="rounded-xl h-11" disabled={!isEditMode} />
+                          <Input placeholder="Ví dụ: CTDT-IT-2026" className="rounded-xl h-11" disabled={!isEditMode || editingProgram?.hasUncompletedCampaign} />
                         </Form.Item>
                         <Form.Item
                           name="majorId"
                           label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Ngành học trực thuộc</span>}
                           rules={[{ required: true, message: 'Vui lòng chọn ngành' }]}
                         >
-                          <Select placeholder="Chọn ngành học" className="rounded-xl h-11" disabled={!isEditMode}>
+                          <Select placeholder="Chọn ngành học" className="rounded-xl h-11" disabled={!isEditMode || editingProgram?.hasUncompletedCampaign}>
                             {majors.map(m => (
                               <Select.Option key={m.id} value={m.id}>{m.name}</Select.Option>
                             ))}
@@ -391,7 +444,7 @@ function ProgramManagementContent() {
                           label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái vận hành</span>}
                           initialValue="DRAFT"
                         >
-                          <Select className="rounded-xl h-11" disabled={!isEditMode}>
+                          <Select className="rounded-xl h-11" disabled={!isEditMode || editingProgram?.hasUncompletedCampaign}>
                             <Select.Option value="DRAFT">Bản nháp (Đang xây dựng)</Select.Option>
                             <Select.Option value="ACTIVE">Đang áp dụng (Chính thức)</Select.Option>
                           </Select>
@@ -401,7 +454,7 @@ function ProgramManagementContent() {
                             name="description"
                             label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả tổng quát</span>}
                           >
-                            <Input.TextArea placeholder="Tóm tắt về chương trình đào tạo..." className="rounded-xl" rows={3} disabled={!isEditMode} />
+                            <Input.TextArea placeholder="Tóm tắt về chương trình đào tạo..." className="rounded-xl" rows={3} disabled={!isEditMode || editingProgram?.hasUncompletedCampaign} />
                           </Form.Item>
                         </div>
                         <div className="md:col-span-2 mt-4">
@@ -432,7 +485,7 @@ function ProgramManagementContent() {
                           </Form.Item>
                         </div>
                       </div>
-                      {isEditMode && (
+                      {isEditMode && !editingProgram?.hasUncompletedCampaign && (
                         <div className="flex justify-end gap-3 pt-8 border-t border-slate-100 mt-8">
                           <Button onClick={() => editingProgram ? setIsEditMode(false) : handleBackToList()} className="rounded-xl h-11 px-8 hover:bg-slate-50">Hủy bỏ</Button>
                           <Button type="primary" htmlType="submit" className="rounded-xl h-11 px-10 shadow-md" loading={isCreating || isUpdating}>
@@ -469,12 +522,12 @@ function ProgramManagementContent() {
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 block">Tìm và thêm môn học</span>
                         <Select
                           mode="multiple"
-                          placeholder={isEditMode ? "Nhập mã hoặc tên môn học để tìm kiếm..." : "Đang ở chế độ xem chi tiết"}
+                          placeholder={isEditMode && !editingProgram?.hasUncompletedCampaign ? "Nhập mã hoặc tên môn học để tìm kiếm..." : "Chế độ xem chi tiết hoặc chương trình đang khảo sát"}
                           className="w-full rounded-xl"
                           style={{ minHeight: '48px' }}
-                          value={selectedCourseIds}
-                          onChange={handleAssignCourses}
-                          disabled={!isEditMode}
+                          value={draftCourseIds}
+                          onChange={(newIds) => setDraftCourseIds(newIds)}
+                          disabled={!isEditMode || editingProgram?.hasUncompletedCampaign}
                           optionFilterProp="children"
                           filterOption={(input, option) =>
                             (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -491,17 +544,16 @@ function ProgramManagementContent() {
                           <Title level={5} className="!mb-0 flex items-center gap-2">
                             Môn học đã chọn 
                             <span className="bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                              {selectedCourseIds.length}
+                              {draftCourseIds.length}
                             </span>
                           </Title>
-                          {selectedCourseIds.length > 0 && (
-                            <Text className="text-slate-400 text-xs italic">* Dữ liệu được lưu tự động khi thay đổi</Text>
-                          )}
+                          <Text className="text-slate-400 text-xs italic">
+                            * Nhấn nút "Lưu môn học" bên dưới để áp dụng thay đổi
+                          </Text>
                         </div>
                         <Table 
-                          dataSource={courses.filter(c => selectedCourseIds.includes(c.id))}
+                          dataSource={courses.filter(c => draftCourseIds.includes(c.id))}
                           pagination={false}
-                          loading={isAssigning}
                           columns={[
                             { 
                               title: 'STT', 
@@ -535,7 +587,7 @@ function ProgramManagementContent() {
                               width: 120,
                               render: () => <span className="text-slate-500 text-xs uppercase font-bold tracking-tighter">Bắt buộc</span>
                             },
-                            ...(isEditMode ? [{ 
+                            ...((isEditMode && !editingProgram?.hasUncompletedCampaign) ? [{ 
                               title: 'Gỡ bỏ', 
                               key: 'action', 
                               width: 80, 
@@ -545,7 +597,7 @@ function ProgramManagementContent() {
                                   type="text" 
                                   danger 
                                   icon={<Trash2 className="w-4 h-4" />} 
-                                  onClick={() => handleAssignCourses(selectedCourseIds.filter(id => id !== record.id))}
+                                  onClick={() => setDraftCourseIds(draftCourseIds.filter(id => id !== record.id))}
                                   className="hover:bg-rose-50"
                                 />
                               )
@@ -555,6 +607,39 @@ function ProgramManagementContent() {
                           locale={{ emptyText: <div className="py-12 text-slate-400 italic">Chưa có môn học nào được chọn</div> }}
                         />
                       </div>
+
+                      {/* Course Action Bar */}
+                      {isEditMode && !editingProgram?.hasUncompletedCampaign && (
+                        <div className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 mt-6">
+                          <div>
+                            {hasCourseChanges ? (
+                              <Text className="text-amber-600 font-semibold text-sm flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4" /> Đang có thay đổi môn học chưa lưu
+                              </Text>
+                            ) : (
+                              <Text className="text-slate-400 text-sm italic">Danh sách môn học hiện chưa có thay đổi nào mới</Text>
+                            )}
+                          </div>
+                          <Space size="middle">
+                            <Button 
+                              onClick={handleCancelCourseChanges} 
+                              disabled={!hasCourseChanges || isAssigning}
+                              className="rounded-xl h-11 px-6 font-medium hover:bg-white"
+                            >
+                              Hủy bỏ
+                            </Button>
+                            <Button 
+                              type="primary" 
+                              onClick={handleSaveCourses} 
+                              disabled={!hasCourseChanges} 
+                              loading={isAssigning}
+                              className="rounded-xl h-11 px-8 font-semibold shadow-md bg-emerald-600 hover:bg-emerald-700 border-none"
+                            >
+                              Lưu môn học
+                            </Button>
+                          </Space>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -566,6 +651,7 @@ function ProgramManagementContent() {
     </div>
   );
 }
+
 
 export default function ProgramManagementPage() {
   return (

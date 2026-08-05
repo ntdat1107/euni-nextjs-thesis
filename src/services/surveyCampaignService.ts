@@ -76,5 +76,10 @@ export const surveyCampaignService = {
 
   approve: async (id: string): Promise<void> => {
     return api.post(`/survey/campaigns/${id}/approve`);
+  },
+
+  cancel: async (id: string): Promise<SurveyCampaignResponse> => {
+    // TODO: RBAC Permission Check (PERM_SURVEY_CAMPAIGN_CANCEL)
+    return api.post(`/survey/campaigns/${id}/cancel`);
   }
 };

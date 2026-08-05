@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import {
   Plus, Search, Eye, Edit3, Trash2,
-  Clock, CheckCircle2, AlertCircle, FileText, Loader2
+  Clock, CheckCircle2, AlertCircle, FileText, Loader2, Ban
 } from 'lucide-react';
 import { surveyCampaignService, SurveyCampaignResponse } from '@/services/surveyCampaignService';
 import { Modal, message } from 'antd';
@@ -42,20 +42,27 @@ export default function SurveyCampaignsPage() {
     fetchCampaigns();
   }, []);
 
-  const handleDelete = (id: string) => {
+  const handleCancelCampaign = (record: SurveyCampaignResponse) => {
+    // TODO: RBAC Permission Check (PERM_SURVEY_CAMPAIGN_CANCEL)
     Modal.confirm({
-      title: 'Xác nhận xóa',
-      content: 'Bạn có chắc chắn muốn xóa đợt khảo sát này? Hành động này không thể hoàn tác.',
-      okText: 'Xóa',
+      title: 'Xác nhận Hủy đợt khảo sát',
+      content: (
+        <div className="py-2">
+          <p className="text-slate-600 text-sm font-medium">Bạn có chắc chắn muốn hủy đợt khảo sát <strong>"{record.name}"</strong> không?</p>
+          <p className="text-slate-400 text-xs mt-1">Đợt khảo sát sau khi hủy sẽ dừng quy trình hiện tại và giải phóng Chương trình đào tạo để có thể tạo đợt mới.</p>
+        </div>
+      ),
+      okText: 'Hủy đợt khảo sát',
       okType: 'danger',
-      cancelText: 'Hủy',
+      cancelText: 'Quay lại',
+      centered: true,
       onOk: async () => {
         try {
-          await surveyCampaignService.delete(id);
-          message.success('Đã xóa đợt khảo sát');
+          await surveyCampaignService.cancel(record.id);
+          message.success('Đã hủy đợt khảo sát thành công');
           fetchCampaigns();
-        } catch (error) {
-          message.error('Lỗi khi xóa đợt khảo sát');
+        } catch (error: any) {
+          message.error(error?.response?.data?.message || error?.message || 'Lỗi khi hủy đợt khảo sát');
         }
       }
     });
@@ -72,6 +79,8 @@ export default function SurveyCampaignsPage() {
         return <Tag icon={<Clock size={12} />} color="default" className="rounded-full px-3">Đã kết thúc</Tag>;
       case 'APPROVED':
         return <Tag icon={<CheckCircle2 size={12} />} color="gold" className="rounded-full px-3">Đã phê duyệt (Synced)</Tag>;
+      case 'CANCELLED':
+        return <Tag icon={<Ban size={12} />} color="error" className="rounded-full px-3">Đã hủy</Tag>;
       default:
         return <Tag className="rounded-full px-3">{status}</Tag>;
     }
@@ -137,13 +146,13 @@ export default function SurveyCampaignsPage() {
               className="hover:bg-blue-50"
             />
           </Tooltip>
-          {record.status === 'DRAFT' && (
-            <Tooltip title="Xóa bản nháp">
+          {record.status !== 'APPROVED' && record.status !== 'CANCELLED' && (
+            <Tooltip title="Hủy đợt khảo sát">
               <Button
                 type="text"
                 danger
-                icon={<Trash2 size={18} />}
-                onClick={() => handleDelete(record.id)}
+                icon={<Ban size={18} />}
+                onClick={() => handleCancelCampaign(record)}
                 className="hover:bg-rose-50"
               />
             </Tooltip>

@@ -1,6 +1,41 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
+import { CKEditor } from '@ckeditor/ckeditor5-react';
+import {
+  ClassicEditor,
+  Essentials,
+  Undo,
+  SelectAll,
+  Paragraph,
+  Heading,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  RemoveFormat,
+  FontSize,
+  FontColor,
+  FontBackgroundColor,
+  Alignment,
+  List,
+  ListProperties,
+  Indent,
+  IndentBlock,
+  Link,
+  AutoLink,
+  HorizontalLine,
+  Table,
+  TableToolbar,
+  TableProperties,
+  TableCellProperties,
+  TableColumnResize,
+  TableCaption
+} from 'ckeditor5';
+import { Sparkles, Send, Loader2, RefreshCw, PlusCircle, Replace, X, Bot, Check } from 'lucide-react';
+import { Popover, Input, Button, Tag, Tooltip } from 'antd';
+
+import 'ckeditor5/translations/vi.js';
 import 'ckeditor5/ckeditor5.css';
 
 interface RichtextEditorProps {
@@ -20,56 +55,27 @@ export default function RichtextEditor({
   minHeight = 220,
   error = false
 }: RichtextEditorProps) {
-  const [editorData, setEditorData] = useState<any>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [promptText, setPromptText] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [streamedText, setStreamedText] = useState('');
+  const [hasCompletedStream, setHasCompletedStream] = useState(false);
 
-  useEffect(() => {
-    const initEditor = async () => {
-      try {
-        const { CKEditor } = await import('@ckeditor/ckeditor5-react');
-        const CK = await import('ckeditor5');
-        
-        // Load Vietnamese translation if possible
-        let viTranslations;
-        try {
-          viTranslations = await import('ckeditor5/translations/vi.js');
-        } catch (e) {
-          console.warn('Vietnamese translations not found');
-        }
+  const editorInstanceRef = useRef<any>(null);
+  const isEditorReadyRef = useRef(false);
 
-        setEditorData({
-          component: CKEditor,
-          engine: CK.ClassicEditor,
-          plugins: [
-            CK.Essentials, CK.Undo, CK.SelectAll, CK.Paragraph, CK.Heading,
-            CK.Bold, CK.Italic, CK.Underline, CK.Strikethrough, CK.RemoveFormat,
-            CK.FontSize, CK.FontColor, CK.FontBackgroundColor, CK.Alignment,
-            CK.List, CK.ListProperties, CK.Indent, CK.IndentBlock,
-            CK.Link, CK.AutoLink, CK.HorizontalLine,
-            CK.Table, CK.TableToolbar, CK.TableProperties, CK.TableCellProperties,
-            CK.TableColumnResize, CK.TableCaption
-          ],
-          translations: viTranslations?.default
-        });
-      } catch (error) {
-        console.error('Failed to load CKEditor 5 modular', error);
-      }
-    };
+  const plugins = [
+    Essentials, Undo, SelectAll, Paragraph, Heading,
+    Bold, Italic, Underline, Strikethrough, RemoveFormat,
+    FontSize, FontColor, FontBackgroundColor, Alignment,
+    List, ListProperties, Indent, IndentBlock,
+    Link, AutoLink, HorizontalLine,
+    Table, TableToolbar, TableProperties, TableCellProperties,
+    TableColumnResize, TableCaption
+  ];
 
-    initEditor();
-  }, []);
-
-  if (!editorData) {
-    return (
-      <div className="w-full rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400" style={{ minHeight }}>
-        Đang tải bộ soạn thảo văn bản...
-      </div>
-    );
-  }
-
-  const { component: CKEditorComponent, engine: ClassicEditor, plugins, translations } = editorData;
-
-  const editorConfig = {
+  const editorConfig: any = {
     plugins: plugins,
     toolbar: {
       items: [
@@ -138,17 +144,239 @@ export default function RichtextEditor({
     },
     placeholder: placeholder || "Nhập nội dung...",
     language: "vi",
-    translations: [translations].filter(Boolean),
     licenseKey: "GPL",
   };
 
+  const handleGenerateAiText = async (promptToRun?: string) => {
+    const finalPrompt = promptToRun || promptText;
+    if (!finalPrompt.trim() || isGenerating) return;
+
+    setIsGenerating(true);
+    setStreamedText('');
+    setHasCompletedStream(false);
+
+    try {
+      const response = await fetch('/api/ai/generate-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: finalPrompt }),
+      });
+
+      if (!response.body) throw new Error('ReadableStream not supported');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      while (true) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(chunk, { stream: true });
+        accumulated += text;
+        setStreamedText(accumulated);
+      }
+
+      setHasCompletedStream(true);
+    } catch (err) {
+      console.error('AI Generate Error:', err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleApplyContent = (mode: 'append' | 'replace') => {
+    if (!streamedText) return;
+    let newValue = value || '';
+    if (mode === 'replace') {
+      newValue = streamedText;
+    } else {
+      newValue = newValue ? `${newValue}\n${streamedText}` : streamedText;
+    }
+    onChange(newValue);
+    setIsAiOpen(false);
+    setStreamedText('');
+    setHasCompletedStream(false);
+    setPromptText('');
+  };
+
+  const quickPrompts = [
+    "Viết mô tả chuẩn đầu ra PLO chuyên nghiệp",
+    "Tóm tắt ngắn gọn nội dung môn học",
+    "Gợi ý ma trận kỹ năng chi tiết"
+  ];
+
+  const aiPopoverContent = (
+    <div className="w-[480px] p-4 space-y-4 font-sans bg-white rounded-2xl">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+            <Sparkles size={16} className="animate-pulse" />
+          </div>
+          <div>
+            <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <span>Trợ lý AI Trí tuệ nhân tạo</span>
+              <Tag color="blue" className="border-none text-[10px] font-bold uppercase rounded-full px-2 py-0.2 bg-blue-50 text-blue-600">
+                GPT-4o Stream
+              </Tag>
+            </div>
+            <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung học thuật</div>
+          </div>
+        </div>
+        <Button
+          type="text"
+          size="small"
+          icon={<X size={16} className="text-slate-400 hover:text-slate-600" />}
+          onClick={() => setIsAiOpen(false)}
+          className="hover:bg-slate-100 rounded-full w-7 h-7 flex items-center justify-center"
+        />
+      </div>
+
+      {/* Quick Prompts */}
+      {!streamedText && !isGenerating && (
+        <div className="space-y-2">
+          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gợi ý câu lệnh thường dùng:</div>
+          <div className="flex flex-col gap-1.5">
+            {quickPrompts.map((qp, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setPromptText(qp);
+                  handleGenerateAiText(qp);
+                }}
+                className="group flex items-center justify-between text-xs text-slate-700 bg-slate-50 hover:bg-blue-50/80 hover:text-blue-700 px-3 py-2 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all text-left font-medium"
+              >
+                <span>{qp}</span>
+                <span className="text-[10px] font-semibold text-slate-400 group-hover:text-blue-600 transition-colors">Áp dụng →</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Prompt Input Box */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Input.TextArea
+            rows={3}
+            placeholder="Nhập yêu cầu để AI tạo nội dung (Ví dụ: Viết mô tả chuẩn đầu ra PLO môn học Kiến trúc Phần mềm...)"
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            disabled={isGenerating}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleGenerateAiText();
+              }
+            }}
+            className="rounded-xl border-slate-200 hover:border-blue-300 focus:border-blue-500 focus:shadow-sm text-xs p-3 leading-relaxed text-slate-800 placeholder:text-slate-400"
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-slate-400 italic">Nhấn Enter để gửi request</span>
+          <Button
+            type="primary"
+            size="middle"
+            icon={isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            onClick={() => handleGenerateAiText()}
+            disabled={!promptText.trim() || isGenerating}
+            className="rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-xs px-4 h-8 flex items-center gap-1.5 shadow-sm border-none"
+          >
+            <span>{isGenerating ? 'Đang tạo...' : 'Gửi yêu cầu'}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Streaming Output Box */}
+      {(isGenerating || streamedText) && (
+        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/90 text-slate-800 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/70 font-semibold">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Bot size={15} className="text-blue-600" />
+              <span>{isGenerating ? 'AI đang sinh nội dung...' : 'Kết quả tạo từ AI:'}</span>
+            </div>
+            {isGenerating && (
+              <div className="flex items-center gap-1.5 text-blue-600 text-[11px]">
+                <Loader2 size={13} className="animate-spin" />
+                <span>Streaming...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="max-h-[220px] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-700 custom-ai-scrollbar prose prose-slate max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5">
+            <div dangerouslySetInnerHTML={{ __html: streamedText }} />
+            {isGenerating && (
+              <span className="inline-block w-1.5 h-3.5 bg-blue-600 ml-1 animate-pulse rounded-xs align-middle" />
+            )}
+          </div>
+
+          {hasCompletedStream && (
+            <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between gap-2">
+              <Button
+                size="small"
+                icon={<RefreshCw size={13} />}
+                onClick={() => handleGenerateAiText()}
+                className="bg-white hover:bg-slate-100 border-slate-200 text-slate-600 text-xs rounded-lg font-medium h-8"
+              >
+                Tạo lại
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="small"
+                  icon={<PlusCircle size={13} />}
+                  onClick={() => handleApplyContent('append')}
+                  className="bg-white hover:bg-blue-50 border-blue-200 text-blue-600 text-xs rounded-lg font-semibold h-8"
+                >
+                  Chèn vào cuối
+                </Button>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<Replace size={13} />}
+                  onClick={() => handleApplyContent('replace')}
+                  className="bg-blue-600 hover:bg-blue-700 border-none text-xs font-semibold rounded-lg h-8 px-3 shadow-xs"
+                >
+                  Thay thế tất cả
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
-      className={`ck-editor-wrapper rounded-lg border transition-all ${
+      className={`ck-editor-wrapper rounded-lg border transition-all relative ${
         isFocused ? 'is-focused' : ''
       } ${error ? 'has-error' : ''} ${disabled ? 'is-readonly' : ''}`}
       style={{ '--ck-min-height': `${minHeight}px` } as any}
     >
+      {!disabled && (
+        <div className="absolute top-1.5 right-2 z-10 flex items-center gap-1">
+          <Popover
+            content={aiPopoverContent}
+            trigger="click"
+            open={isAiOpen}
+            onOpenChange={setIsAiOpen}
+            placement="bottomRight"
+            overlayClassName="ai-assistant-popover"
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<Sparkles size={14} className="text-indigo-600 animate-pulse" />}
+              className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 hover:border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg px-2.5 h-7 flex items-center gap-1 shadow-sm transition-all hover:scale-105"
+            >
+              <span>Nhờ AI viết</span>
+            </Button>
+          </Popover>
+        </div>
+      )}
+
       {disabled ? (
         <div
           className="ck-content prose prose-sm max-w-none px-4 py-3 text-slate-800"
@@ -158,12 +386,13 @@ export default function RichtextEditor({
           }}
         />
       ) : (
-        <CKEditorComponent
+        <CKEditor
           editor={ClassicEditor}
           config={editorConfig}
           data={value}
           onReady={(editor: any) => {
-            // Adjust editor height
+            editorInstanceRef.current = editor;
+            isEditorReadyRef.current = true;
             editor.editing.view.change((writer: any) => {
               writer.setStyle(
                 'min-height',
@@ -173,8 +402,11 @@ export default function RichtextEditor({
             });
           }}
           onChange={(event: any, editor: any) => {
+            if (!isEditorReadyRef.current) return;
             const data = editor.getData();
-            onChange(data);
+            if (data !== value) {
+              onChange(data);
+            }
           }}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
@@ -208,6 +440,7 @@ export default function RichtextEditor({
           border-radius: 0 !important;
           background: #f8fafc !important;
           padding: 4px 8px !important;
+          padding-right: 110px !important; /* Space for AI Assistant Button */
         }
         .ck-editor-wrapper .ck-content {
           border: none !important;
@@ -249,7 +482,32 @@ export default function RichtextEditor({
         .ck-content table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
         .ck-content table td, .ck-content table th { border: 1px solid #cbd5e1; padding: 6px 10px; }
         .ck-content table th { background: #f1f5f9; font-weight: 600; }
+
+        /* Custom AI Scrollbar */
+        .custom-ai-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-ai-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 4px;
+        }
+        .custom-ai-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .custom-ai-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
+        /* AI Popover Overrides */
+        .ai-assistant-popover .ant-popover-inner {
+          padding: 0 !important;
+          border-radius: 16px !important;
+          box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.15), 0 4px 12px -2px rgba(15, 23, 42, 0.08) !important;
+          border: 1px solid #e2e8f0 !important;
+        }
       `}</style>
     </div>
   );
 }
+

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button, Typography, Space, Tag, Breadcrumb, Card, message, Spin, Skeleton
 } from 'antd';
@@ -17,12 +17,19 @@ const { Title, Text } = Typography;
 export default function SurveyStepPage() {
   const { id, stepId } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlMode = searchParams?.get('mode'); // 'view' | 'edit'
+  const courseIdParam = searchParams?.get('courseId');
+
   const [loading, setLoading] = useState(true);
   const [campaign, setCampaign] = useState<any>(null);
   const [step, setStep] = useState<any>(null);
   const [isEdit, setIsEdit] = useState(false);
   const [formData, setFormData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [prerequisiteLocked, setPrerequisiteLocked] = useState(false);
+  const [prerequisiteStepName, setPrerequisiteStepName] = useState('');
 
   const fetchData = async () => {
     try {
@@ -38,12 +45,54 @@ export default function SurveyStepPage() {
         
         setStep({ ...foundStep, configuration: config });
         setFormData(result);
+
+        // Check prerequisite step condition
+        const prereqCodes: string[] = Array.isArray(config?.prerequisiteStepCodes) && config.prerequisiteStepCodes.length > 0
+          ? config.prerequisiteStepCodes
+          : (config?.prerequisiteStepCode ? [config.prerequisiteStepCode] : []);
+
+        let isLockedByPrereq = false;
+        const incompleteNames: string[] = [];
+
+        if (prereqCodes.length > 0) {
+          for (const prereqCode of prereqCodes) {
+            const prereqStep = data.steps.find((s: any) => {
+              const sc = typeof s.configuration === 'string' ? JSON.parse(s.configuration)?.screenCode : s.configuration?.screenCode;
+              return sc === prereqCode;
+            });
+
+            if (prereqStep && (prereqStep.status || '').toUpperCase() !== 'COMPLETED') {
+              isLockedByPrereq = true;
+              incompleteNames.push(prereqStep.stepName || prereqCode);
+            }
+          }
+
+          setPrerequisiteLocked(isLockedByPrereq);
+          setPrerequisiteStepName(incompleteNames.join(', '));
+        } else {
+          setPrerequisiteLocked(false);
+        }
         
-        const status = (foundStep.status || '').toUpperCase();
-        if ((status === 'DRAFT' || !foundStep.status) && data.status !== 'APPROVED') {
+        // --- MODE PARAM & RBAC PERMISSION CHECK ---
+        // TODO: RBAC Enhancement - In future release, granular role-based permissions (e.g. PERM_SURVEY_STEP_EDIT)
+        // will override the mode URL parameter to enforce view-only access for non-performer roles.
+        const isCampaignApproved = (data?.status || '').toUpperCase() === 'APPROVED';
+        const canEditByStatus = !isCampaignApproved && !isLockedByPrereq;
+
+        if (!canEditByStatus) {
+          setIsEdit(false);
+        } else if (urlMode === 'view') {
+          setIsEdit(false);
+        } else if (urlMode === 'edit') {
           setIsEdit(true);
         } else {
-          setIsEdit(false);
+          // If no mode param:
+          // If step S5_CLO and no courseId specified, default to view-only mode
+          if (config?.screenCode === 'S5_CLO' && !courseIdParam) {
+            setIsEdit(false);
+          } else {
+            setIsEdit(true);
+          }
         }
       } else {
         message.error('Không tìm thấy bước khảo sát');
@@ -55,6 +104,8 @@ export default function SurveyStepPage() {
       setLoading(false);
     }
   };
+
+
 
   useEffect(() => {
     fetchData();
@@ -195,7 +246,7 @@ export default function SurveyStepPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              {campaign?.status !== 'APPROVED' && !isEdit ? (
+              {campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked ? (
                 <Button 
                   type="primary" 
                   icon={<Edit size={18} />}
@@ -233,10 +284,23 @@ export default function SurveyStepPage() {
           </div>
         </div>
 
+        {prerequisiteLocked && (
+          <div className="mb-6 p-5 bg-amber-50 rounded-2xl border border-amber-200 flex items-center gap-3 text-amber-900 shadow-sm">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <Text strong className="text-amber-900 block font-bold text-base">Bước này chưa được phép thực hiện!</Text>
+              <Text className="text-amber-700 text-sm font-medium">
+                Theo quy trình, bạn cần phải hoàn thành bước <strong>"{prerequisiteStepName}"</strong> trước khi có thể mở khóa và chỉnh sửa bước này.
+              </Text>
+            </div>
+          </div>
+        )}
+
         {/* Content Section */}
         <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden p-10 min-h-[600px]">
           {renderContent()}
         </div>
+
       </div>
 
       <style jsx global>{`

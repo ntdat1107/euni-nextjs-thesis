@@ -26,9 +26,11 @@ export interface Program {
   specificObjectives?: string;
   learningOutcomes?: string;
   data?: string; // Synced metadata JSON
+  hasUncompletedCampaign?: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
 
 export interface Course {
   id: string;

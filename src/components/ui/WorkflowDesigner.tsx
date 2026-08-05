@@ -130,6 +130,12 @@ const nodeTypes = {
 // --- DATA CONSTANTS ---
 
 const SCREEN_CODES = [
+  { value: 'S1', label: 'Bước 1: Khởi tạo CTĐT (S1)' },
+  { value: 'S2_PLO', label: 'Bước 2/3: Xây dựng Chuẩn đầu ra CTĐT (S2_PLO)' },
+  { value: 'S3_PLO', label: 'Bước 3: Đánh giá & Phê duyệt PLO (S3_PLO)' },
+  { value: 'S4', label: 'Bước 4: Thiết kế cấu trúc CTĐT (S4)' },
+  { value: 'S5_CLO', label: 'Bước 5: Thiết kế Đề cương chi tiết & CLO (S5_CLO)' },
+  { value: 'S6_MATRIX', label: 'Bước 6: Tổng hợp Ma trận PLO - CLO (S6_MATRIX)' },
   { value: 'DASHBOARD', label: 'Bảng điều khiển (DASHBOARD)' },
   { value: 'REQUEST_FORM', label: 'Biểu mẫu yêu cầu (REQUEST_FORM)' },
   { value: 'REVIEW_STEP_1', label: 'Thẩm định hồ sơ (REVIEW_STEP_1)' },
@@ -242,7 +248,8 @@ function DesignerInner({
         name: node.data.label,
         screenCode: node.data.screenCode,
         performerRole: node.data.performerRole,
-        approverRole: node.data.approverRole
+        approverRole: node.data.approverRole,
+        prerequisiteStepCode: node.data.prerequisiteStepCode
       });
     } else if (selectedEdges.length > 0) {
       const edge = selectedEdges[0];
@@ -310,7 +317,7 @@ function DesignerInner({
         setNodes((nds) =>
           nds.map((node) =>
             node.id === selectedElement.id
-              ? { ...node, data: { ...node.data, label: values.name, screenCode: values.screenCode, performerRole: values.performerRole, approverRole: values.approverRole } }
+              ? { ...node, data: { ...node.data, label: values.name, screenCode: values.screenCode, performerRole: values.performerRole, approverRole: values.approverRole, prerequisiteStepCode: values.prerequisiteStepCode } }
               : node
           )
         );
@@ -454,6 +461,15 @@ function DesignerInner({
                       {SCREEN_CODES.map(s => <Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
                     </Select>
                   </Form.Item>
+                  <Form.Item 
+                    label="Bước phụ thuộc (Bắt buộc hoàn thành trước)" 
+                    name="prerequisiteStepCode"
+                    tooltip="Màn hình này sẽ bị khóa cho tới khi bước phụ thuộc được đánh giá HOÀN THÀNH"
+                  >
+                    <Select placeholder="Chọn bước phụ thuộc (nếu có)" allowClear className="rounded-lg">
+                      {SCREEN_CODES.map(s => <Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
+                    </Select>
+                  </Form.Item>
                   <Form.Item label="Người thực hiện" name="performerRole">
                     <Select placeholder="Chọn role người thực hiện" allowClear className="rounded-lg">
                       {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
@@ -468,6 +484,7 @@ function DesignerInner({
               )}
             </>
           )}
+
 
           {selectedElement?.type === 'edge' && (
             <>

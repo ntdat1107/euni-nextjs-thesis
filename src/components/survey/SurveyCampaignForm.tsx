@@ -6,19 +6,21 @@ import {
   Typography, Card, Button, Space, Breadcrumb, Form, Input,
   Select, Divider, Row, Col, DatePicker, App as AntdApp,
   Empty, Checkbox, Tag, Tooltip, Progress,
-  Modal
+  Modal, Collapse
 } from 'antd';
 import {
   ArrowLeft, Save, CheckCircle2,
   Settings, FileText, Users, Calendar, Info, Loader2,
-  ChevronRight, PlayCircle, ClipboardList, Clock, AlertCircle, Edit
+  ChevronRight, ChevronUp, ChevronDown, PlayCircle, ClipboardList, Clock, AlertCircle, Edit, BookOpen, Ban
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { programService } from '@/services/programService';
+import { courseService } from '@/services/courseService';
 import workflowService, { WorkflowTemplateResponse } from '@/services/workflowService';
 import { surveyCampaignService, SurveyCampaignRequest } from '@/services/surveyCampaignService';
 import { rbacService, Role } from '@/services/rbacService';
 import { workflowDefinitionService, WorkflowStepDefinitionResponse } from '@/services/workflowDefinitionService';
+
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -70,6 +72,8 @@ export default function SurveyCampaignForm() {
     fetchData();
   }, [isNew, message]);
 
+  const [programCourses, setProgramCourses] = useState<any[]>([]);
+
   useEffect(() => {
     if (!isNew && id) {
       const fetchCampaign = async () => {
@@ -83,18 +87,35 @@ export default function SurveyCampaignForm() {
             workflowId: data.workflowTemplateId
           });
           setSelectedWorkflowId(data.workflowTemplateId);
-          setWorkflowSteps(data.steps.map(s => {
+          const sortedSteps = [...(data.steps || [])].sort((a: any, b: any) => (a.stepIndex ?? 0) - (b.stepIndex ?? 0));
+          setWorkflowSteps(sortedSteps.map(s => {
             // Parse configuration if it's a string
             const config = typeof s.configuration === 'string' ? JSON.parse(s.configuration) : (s.configuration || {});
             return {
               id: s.id,
+              stepIndex: s.stepIndex,
               title: s.stepName,
               deadline: s.deadline ? dayjs(s.deadline) : null,
               requiredDocuments: typeof s.requiredDocuments === 'string' ? JSON.parse(s.requiredDocuments) : (s.requiredDocuments || []),
               configuration: config,
-              status: s.status
+              status: s.status,
+              resultData: s.resultData
             };
           }));
+
+          // Fetch courses for the program
+          if (data.programId) {
+            try {
+              const [allCourses, assignedIds] = await Promise.all([
+                courseService.getAll(),
+                programService.getCourses(data.programId)
+              ]);
+              const filtered = allCourses.filter(c => assignedIds.includes(c.id));
+              setProgramCourses(filtered);
+            } catch (err) {
+              console.error('Lỗi khi tải môn học của chương trình:', err);
+            }
+          }
         } catch (error) {
           message.error('Lỗi khi tải chi tiết đợt khảo sát');
         } finally {
@@ -103,6 +124,7 @@ export default function SurveyCampaignForm() {
       };
       fetchCampaign();
     }
+
   }, [id, isNew, form, message]);
 
   const handleApprove = async () => {
@@ -148,6 +170,10 @@ export default function SurveyCampaignForm() {
                 const stepCode = taskNode.data.screenCode;
                 const definition = stepDefinitions.find(d => d.stepCode === stepCode);
 
+                const prereqs = Array.isArray(taskNode.data?.prerequisiteStepCodes) 
+                  ? taskNode.data.prerequisiteStepCodes 
+                  : (taskNode.data?.prerequisiteStepCode ? [taskNode.data.prerequisiteStepCode] : []);
+
                 steps.push({
                   title: taskNode.data.label || taskNode.id,
                   description: '',
@@ -155,7 +181,9 @@ export default function SurveyCampaignForm() {
                     taskId: taskNode.id,
                     performerRole: taskNode.data.performerRole || '',
                     approverRole: taskNode.data.approverRole || '',
-                    screenCode: stepCode || ''
+                    screenCode: stepCode || '',
+                    prerequisiteStepCodes: prereqs,
+                    prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
                   },
                   deadline: null,
                   requiredDocuments: taskNode.data.requiredDocuments || (definition ? definition.requiredDocuments : [])
@@ -184,6 +212,8 @@ export default function SurveyCampaignForm() {
 
       const requestData: SurveyCampaignRequest = {
         ...rest,
+        programId: values.programId || campaignData?.programId,
+        workflowTemplateId: workflowId || selectedWorkflowId || campaignData?.workflowTemplateId,
         code: values.code || `CAM-${Date.now()}`,
         status: isNew ? 'ACTIVE' : (values.status || 'ACTIVE'),
         startDate: range?.[0] ? range[0].toISOString() : dayjs().toISOString(),
@@ -191,7 +221,7 @@ export default function SurveyCampaignForm() {
         steps: workflowSteps.map((s, idx) => ({
           stepIndex: idx,
           stepName: s.title,
-          deadline: s.deadline?.toISOString(),
+          deadline: s.deadline?.toISOString ? s.deadline.toISOString() : s.deadline,
           requiredDocuments: s.requiredDocuments || [],
           configuration: s.configuration || {}
         }))
@@ -199,16 +229,27 @@ export default function SurveyCampaignForm() {
 
       let result;
       if (isNew) {
-        result = await surveyCampaignService.create({ ...requestData, workflowTemplateId: selectedWorkflowId! });
+        result = await surveyCampaignService.create(requestData);
         message.success('Đã tạo đợt khảo sát thành công!');
       } else {
         result = await surveyCampaignService.update(id, requestData);
         message.success('Đã cập nhật đợt khảo sát!');
       }
 
+
       router.push(`/survey/campaigns/${result.id}?mode=view`);
     } catch (error: any) {
-      message.error(error.message || 'Lỗi khi lưu dữ liệu');
+      const errorMsg = error?.response?.data?.message || error?.message || 'Lỗi khi lưu dữ liệu';
+      Modal.error({
+        title: 'Không thể tạo đợt khảo sát mới',
+        content: (
+          <div className="py-2">
+            <p className="text-slate-600 text-sm font-medium leading-relaxed">{errorMsg}</p>
+          </div>
+        ),
+        okText: 'Đã hiểu',
+        centered: true,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -258,6 +299,10 @@ export default function SurveyCampaignForm() {
     );
   };
 
+  const [courseSearchText, setCourseSearchText] = useState('');
+  const [courseStatusFilter, setCourseStatusFilter] = useState<'ALL' | 'SET' | 'UNSET'>('ALL');
+  const [isS5Expanded, setIsS5Expanded] = useState(true);
+
   const renderExecutionProgress = () => {
     return (
       <div className="px-12 py-8 space-y-6">
@@ -301,64 +346,216 @@ export default function SurveyCampaignForm() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {workflowSteps.length > 0 ? workflowSteps.map((step, idx) => (
-                <tr key={step.id || idx} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-6 py-5 text-center font-bold text-slate-300 group-hover:text-blue-400 transition-colors">
-                    {(idx + 1).toString().padStart(2, '0')}
-                  </td>
-                  <td className="px-4 py-5">
-                    <div className="flex flex-col">
-                      <Text className="font-semibold text-slate-700">{step.title}</Text>
-                      {step.configuration?.screenCode && (
-                        <Text className="text-[10px] text-slate-400 font-mono">CODE: {step.configuration.screenCode}</Text>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-5">
-                    <div className="flex flex-wrap gap-1">
-                      {step.requiredDocuments?.map((doc: string, dIdx: number) => (
-                        <Tag key={dIdx} className="bg-slate-50 border-slate-200 text-slate-500 text-[10px] rounded-md">
-                          {doc}
+              {workflowSteps.length > 0 ? workflowSteps.map((step, idx) => {
+                const stepResult = typeof step.resultData === 'string' ? JSON.parse(step.resultData) : (step.resultData || {});
+                
+                const filteredCourses = programCourses.filter((course: any) => {
+                  const courseCloData = stepResult?.[course.id]?.clos || stepResult?.[course.id] || [];
+                  const hasClo = Array.isArray(courseCloData) && courseCloData.length > 0;
+
+                  // Status filter
+                  if (courseStatusFilter === 'SET' && !hasClo) return false;
+                  if (courseStatusFilter === 'UNSET' && hasClo) return false;
+
+                  // Search term filter
+                  if (!courseSearchText.trim()) return true;
+                  const term = courseSearchText.toLowerCase();
+                  return (
+                    (course.name && course.name.toLowerCase().includes(term)) ||
+                    (course.code && course.code.toLowerCase().includes(term))
+                  );
+                });
+
+                return (
+                  <React.Fragment key={step.id || idx}>
+                    <tr 
+                      className={`hover:bg-slate-50/50 transition-colors group ${
+                        step.configuration?.screenCode === 'S5_CLO' ? 'cursor-pointer select-none bg-blue-50/20' : ''
+                      }`}
+                      onClick={() => {
+                        if (step.configuration?.screenCode === 'S5_CLO') {
+                          setIsS5Expanded(!isS5Expanded);
+                        }
+                      }}
+                    >
+                      <td className="px-6 py-5 text-center font-bold text-slate-300 group-hover:text-blue-400 transition-colors">
+                        {(idx + 1).toString().padStart(2, '0')}
+                      </td>
+                      <td className="px-4 py-5">
+                        <div className="flex flex-col">
+                          <Text className="font-semibold text-slate-700">{step.title}</Text>
+                          {step.configuration?.screenCode && (
+                            <Text className="text-[10px] text-slate-400 font-mono">CODE: {step.configuration.screenCode}</Text>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-5">
+                        <div className="flex flex-wrap gap-1">
+                          {step.requiredDocuments?.map((doc: string, dIdx: number) => (
+                            <Tag key={dIdx} className="bg-slate-50 border-slate-200 text-slate-500 text-[10px] rounded-md">
+                              {doc}
+                            </Tag>
+                          ))}
+                          {(!step.requiredDocuments || step.requiredDocuments.length === 0) && <Text type="secondary" className="text-xs italic">Không có</Text>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-5">
+                        <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium">
+                          {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
                         </Tag>
-                      ))}
-                      {(!step.requiredDocuments || step.requiredDocuments.length === 0) && <Text type="secondary" className="text-xs italic">Không có</Text>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-5">
-                    <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium">
-                      {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
-                    </Tag>
-                  </td>
-                  <td className="px-4 py-5">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Clock size={14} className="text-slate-300" />
-                      <Text className="text-sm">
-                        {step.deadline ? dayjs(step.deadline).format('DD/MM/YYYY') : 'Chưa thiết lập'}
-                      </Text>
-                    </div>
-                  </td>
-                  <td className="px-4 py-5">
-                    {(() => {
-                      const status = (step.status || '').toUpperCase();
-                      if (status === 'COMPLETED') return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full">Hoàn thành</Tag>;
-                      if (status === 'ACTIVE') return <Tag icon={<Clock size={12} />} color="processing" className="rounded-full">Đang thực hiện</Tag>;
-                      return <Tag icon={<AlertCircle size={12} />} color="default" className="rounded-full">Chờ khởi tạo</Tag>;
-                    })()}
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <Tooltip title="Xem chi tiết bước">
-                      <Button
-                        type="text"
-                        icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
-                        className="flex items-center justify-center ml-auto hover:bg-blue-50 rounded-full w-9 h-9"
-                        onClick={() => {
-                          router.push(`/survey/campaigns/${id}/steps/${step.id || idx}`);
-                        }}
-                      />
-                    </Tooltip>
-                  </td>
-                </tr>
-              )) : (
+                      </td>
+                      <td className="px-4 py-5">
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Clock size={14} className="text-slate-300" />
+                          <Text className="text-sm">
+                            {step.deadline ? dayjs(step.deadline).format('DD/MM/YYYY') : 'Chưa thiết lập'}
+                          </Text>
+                        </div>
+                      </td>
+                      <td className="px-4 py-5">
+                        {(() => {
+                          const status = (step.status || '').toUpperCase();
+                          if (status === 'COMPLETED') return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full">Hoàn thành</Tag>;
+                          if (status === 'ACTIVE') return <Tag icon={<Clock size={12} />} color="processing" className="rounded-full">Đang thực hiện</Tag>;
+                          return <Tag icon={<AlertCircle size={12} />} color="default" className="rounded-full">Chờ khởi tạo</Tag>;
+                        })()}
+                      </td>
+                      <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          {step.configuration?.screenCode === 'S5_CLO' && (
+                            <Tooltip title={isS5Expanded ? "Thu gọn danh sách môn học" : "Mở rộng danh sách môn học"}>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={isS5Expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsS5Expanded(!isS5Expanded);
+                                }}
+                                className="flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 h-8 px-2.5 font-semibold text-xs gap-1 border border-blue-200/80 transition-all"
+                              >
+                                <span>{isS5Expanded ? 'Thu gọn' : 'Mở rộng'}</span>
+                              </Button>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="Xem chi tiết bước">
+                            <Button
+                              type="text"
+                              icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
+                              className="flex items-center justify-center hover:bg-blue-50 rounded-full w-8 h-8"
+                              onClick={() => {
+                                router.push(`/survey/campaigns/${id}/steps/${step.id || idx}`);
+                              }}
+                            />
+                          </Tooltip>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {step.configuration?.screenCode === 'S5_CLO' && isS5Expanded && (
+                      <tr key={`sub-s5-${step.id || idx}`}>
+                        <td colSpan={7} className="px-6 py-5 bg-slate-50/80 border-t border-b border-slate-200/80">
+                          <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-md space-y-4">
+                            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100 flex-wrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100/70 flex items-center justify-center text-blue-600 font-bold shadow-2xs">
+                                  <BookOpen size={20} />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-800 text-base flex items-center gap-2.5">
+                                    <span>Danh sách Môn học thuộc CTĐT</span>
+                                    <Tag color="blue" className="rounded-full font-bold text-xs px-3 py-0.5 border-none">
+                                      {programCourses.length} môn học
+                                    </Tag>
+                                  </div>
+                                  <div className="text-xs text-slate-400 mt-0.5">Thiết kế đề cương chi tiết và Chuẩn đầu ra (CLO) cho từng môn học</div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <Select
+                                  value={courseStatusFilter}
+                                  onChange={setCourseStatusFilter}
+                                  size="middle"
+                                  className="w-48 text-xs font-medium"
+                                  options={[
+                                    { value: 'ALL', label: 'Tất cả trạng thái' },
+                                    { value: 'SET', label: 'Đã thiết lập CLO' },
+                                    { value: 'UNSET', label: 'Chưa thiết lập CLO' },
+                                  ]}
+                                />
+                                <Input.Search
+                                  placeholder="Tìm môn học theo tên hoặc mã môn..."
+                                  allowClear
+                                  size="middle"
+                                  value={courseSearchText}
+                                  onChange={(e) => setCourseSearchText(e.target.value)}
+                                  className="w-72 text-xs"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="max-h-[480px] overflow-y-auto pr-1.5 space-y-3">
+                              {filteredCourses.length > 0 ? filteredCourses.map((course: any) => {
+                                const courseCloData = stepResult?.[course.id]?.clos || stepResult?.[course.id] || [];
+                                const hasClo = Array.isArray(courseCloData) && courseCloData.length > 0;
+
+                                return (
+                                  <div 
+                                    key={course.id} 
+                                    className="p-4 bg-slate-50/50 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:border-blue-400 hover:bg-white hover:shadow-md transition-all group/item"
+                                  >
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-xs font-mono group-hover/item:bg-blue-600 group-hover/item:text-white transition-all shadow-2xs">
+                                        {course.code || 'MH'}
+                                      </div>
+                                      <div>
+                                        <div className="font-bold text-slate-800 text-sm group-hover/item:text-blue-600 transition-colors">{course.name}</div>
+                                        <div className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-2">
+                                          <span>Mã môn: <span className="font-mono text-slate-600 font-semibold">{course.code}</span></span>
+                                          <span>•</span>
+                                          <span>Số tín chỉ: <span className="text-slate-600 font-semibold">{course.credits || 3}</span></span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4">
+                                      {hasClo ? (
+                                        <Tag color="success" className="rounded-full px-3.5 py-1 border-none font-bold text-[10px] uppercase tracking-wider shadow-2xs">
+                                          {courseCloData.length} CLO đã thiết lập
+                                        </Tag>
+                                      ) : (
+                                        <Tag color="default" className="rounded-full px-3.5 py-1 border-none font-medium text-[10px] text-slate-400 bg-slate-100">
+                                          Chưa thiết lập CLO
+                                        </Tag>
+                                      )}
+
+                                      <Button
+                                        type="primary"
+                                        size="middle"
+                                        onClick={() => router.push(`/survey/campaigns/${id}/steps/${step.id || idx}?courseId=${course.id}&mode=edit`)}
+                                        className="rounded-xl h-9 px-4 text-xs font-bold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-100 border-none flex items-center gap-2 cursor-pointer transition-all hover:scale-102"
+                                      >
+                                        <FileText size={15} />
+                                        <span>Thiết kế đề cương / CLO</span>
+                                        <ChevronRight size={14} className="opacity-70 group-hover/item:translate-x-0.5 transition-transform" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              }) : (
+                                <div className="text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm font-medium">
+                                  {courseSearchText || courseStatusFilter !== 'ALL' ? 'Không tìm thấy môn học phù hợp với bộ lọc.' : 'Chương trình đào tạo này chưa có môn học nào được gán.'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              }) : (
                 <tr>
                   <td colSpan={6} className="py-12">
                     <Empty description="Không có bước nào được cấu hình" />
@@ -439,6 +636,307 @@ export default function SurveyCampaignForm() {
     );
   };
 
+  const [activeTabKey, setActiveTabKey] = useState<string>('steps');
+
+  const renderWireframeHeader = () => {
+    const data = !isNew ? campaignData : form.getFieldsValue();
+    const status = (isView ? campaignData?.status : form.getFieldValue('status')) || 'DRAFT';
+    const statusMap: any = {
+      'DRAFT': { color: 'default', text: 'Bản nháp' },
+      'ACTIVE': { color: 'processing', text: 'Đang diễn ra' },
+      'COMPLETED': { color: 'success', text: 'Đã kết thúc' },
+      'APPROVED': { color: 'gold', text: 'Đã phê duyệt (Synced)' },
+      'CANCELLED': { color: 'error', text: 'Đã hủy' }
+    };
+    const config = statusMap[status] || statusMap['DRAFT'];
+
+    const completedStepsCount = workflowSteps.filter(s => s.status === 'COMPLETED').length;
+    const progressPercent = workflowSteps.length > 0 ? Math.round((completedStepsCount / workflowSteps.length) * 100) : 0;
+
+    const totalCourses = programCourses.length;
+    const s5Step = workflowSteps.find(s => s.configuration?.screenCode === 'S5_CLO');
+    const s5Result = typeof s5Step?.resultData === 'string' ? JSON.parse(s5Step.resultData) : (s5Step?.resultData || {});
+    const coursesWithClo = programCourses.filter(c => {
+      const clos = s5Result?.[c.id]?.clos || s5Result?.[c.id] || [];
+      return Array.isArray(clos) && clos.length > 0;
+    }).length;
+    const coursesUnset = totalCourses - coursesWithClo;
+
+    return (
+      <div className="bg-white p-6 border-b border-slate-200/90 space-y-6">
+        {/* Top Header Row */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-4 flex-1">
+            <Button
+              icon={<ArrowLeft className="w-4 h-4" />}
+              onClick={() => router.push('/survey/campaigns')}
+              className="rounded-xl hover:bg-slate-100 border-slate-200 flex items-center h-10 px-3.5"
+            >
+              Quay lại
+            </Button>
+            <div className="h-8 w-[1px] bg-slate-200" />
+            <div className="flex items-center gap-3">
+              <Title level={2} className="!mb-0 !text-slate-800 tracking-tight font-bold text-2xl">
+                {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? campaignData?.name : `Chỉnh sửa: ${campaignData?.name}`)}
+              </Title>
+              {!isNew && (
+                <Tag color={config.color} className="rounded-full px-3.5 py-1 border-none font-bold text-xs uppercase tracking-wider shadow-2xs">
+                  🟢 {config.text}
+                </Tag>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {!isView ? (
+              <Button
+                type="primary"
+                size="large"
+                icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
+                onClick={() => form.submit()}
+                disabled={isSubmitting || (isNew && !selectedWorkflowId)}
+                className="rounded-xl px-6 h-10 font-semibold text-sm bg-emerald-600 hover:bg-emerald-700 shadow-md border-none transition-all"
+              >
+                {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Khởi tạo đợt khảo sát' : 'Lưu thay đổi')}
+              </Button>
+            ) : (
+              <Space size="middle">
+              {campaignData?.status !== 'APPROVED' && campaignData?.status !== 'CANCELLED' && (
+                <Button
+                  danger
+                  size="middle"
+                  icon={<Ban size={16} />}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: 'Xác nhận Hủy đợt khảo sát',
+                      content: (
+                        <div className="py-2">
+                          <p className="text-slate-600 text-sm font-medium">Bạn có chắc chắn muốn hủy đợt khảo sát <strong>"{campaignData?.name}"</strong> không?</p>
+                          <p className="text-slate-400 text-xs mt-1">Đợt khảo sát sau khi hủy sẽ dừng quy trình hiện tại và giải phóng Chương trình đào tạo để có thể tạo đợt khảo sát mới.</p>
+                        </div>
+                      ),
+                      okText: 'Hủy đợt khảo sát',
+                      okType: 'danger',
+                      cancelText: 'Quay lại',
+                      centered: true,
+                      onOk: async () => {
+                        try {
+                          await surveyCampaignService.cancel(id as string);
+                          message.success('Đã hủy đợt khảo sát thành công');
+                          router.push('/survey/campaigns');
+                        } catch (error: any) {
+                          message.error(error.message || 'Lỗi khi hủy đợt khảo sát');
+                        }
+                      }
+                    });
+                  }}
+                  className="rounded-xl px-4 h-10 font-semibold text-sm border-rose-200 text-rose-600 hover:bg-rose-50 transition-all"
+                >
+                  Hủy đợt
+                </Button>
+              )}
+              {campaignData?.status !== 'APPROVED' && campaignData?.status !== 'CANCELLED' && (
+                <Button
+                  type="default"
+                  size="middle"
+                  icon={<Edit size={16} />}
+                  onClick={() => {
+                    editForm.setFieldsValue({
+                      description: campaignData?.description,
+                      range: [dayjs(campaignData?.startDate), dayjs(campaignData?.endDate)]
+                    });
+                    setIsEditModalOpen(true);
+                  }}
+                  className="rounded-xl px-5 h-10 font-semibold text-sm border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-600 transition-all shadow-2xs"
+                >
+                  Chỉnh sửa
+                </Button>
+              )}
+              {campaignData?.status !== 'APPROVED' && (
+                <Button
+                  type="primary"
+                  size="middle"
+                  icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 size={16} />}
+                  onClick={handleApprove}
+                  disabled={isSubmitting}
+                  className="rounded-xl px-6 h-10 font-bold text-sm bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-100 border-none transition-all"
+                >
+                  Phê duyệt & Đồng bộ
+                </Button>
+              )}
+            </Space>
+            )}
+          </div>
+        </div>
+
+        {/* 5-Column KPI Metric Strip (Wireframe Row 2) */}
+        {isView && (
+          <Row gutter={[16, 16]}>
+            <Col span={4} className="w-[20%]">
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-1">
+                <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Trạng thái</Text>
+                <Text className="text-base font-bold text-blue-600 block">{config.text}</Text>
+              </div>
+            </Col>
+            <Col span={5}>
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-1">
+                <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Thời gian</Text>
+                <Text className="text-sm font-bold text-slate-700 block">
+                  {data?.startDate ? `${dayjs(data.startDate).format('DD/MM')} - ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
+                </Text>
+              </div>
+            </Col>
+            <Col span={5}>
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-1">
+                <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Học phần</Text>
+                <Text className="text-base font-bold text-slate-800 block">{totalCourses} môn học</Text>
+              </div>
+            </Col>
+            <Col span={5}>
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/90 shadow-2xs space-y-1">
+                <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Người dùng tham gia</Text>
+                <Text className="text-base font-bold text-slate-800 block">Giảng viên / Khoa</Text>
+              </div>
+            </Col>
+            <Col span={5}>
+              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/90 shadow-2xs flex items-center justify-between">
+                <div>
+                  <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Tiến độ quy trình</Text>
+                  <Text className="text-base font-bold text-emerald-600 block">{progressPercent}% ({completedStepsCount}/{workflowSteps.length})</Text>
+                </div>
+                <Progress type="circle" percent={progressPercent} size={36} strokeWidth={12} />
+              </div>
+            </Col>
+          </Row>
+        )}
+
+        {/* 2-Column Info & Progress Details (Wireframe Row 3) */}
+        {isView && (
+          <Row gutter={24}>
+            <Col span={12}>
+              <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 space-y-4 h-full shadow-2xs">
+                <div className="flex items-center gap-2.5 border-b border-slate-200/90 pb-3.5 mb-4">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100/80 text-blue-600 flex items-center justify-center font-bold">
+                    <Info size={16} />
+                  </div>
+                  <Title level={5} className="!mb-0 text-slate-800 font-bold tracking-tight text-base">
+                    Thông tin chung
+                  </Title>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Chương trình đào tạo (CTĐT)</Text>
+                    <Text className="font-semibold text-slate-800 text-sm block">
+                      {campaignData?.programCode ? `[${campaignData.programCode}] ` : ''}{campaignData?.programName || '---'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Mẫu quy trình</Text>
+                    <Text className="font-semibold text-slate-800 text-sm block">
+                      {campaignData?.workflowTemplateName || '---'} ({workflowSteps.length} bước)
+                    </Text>
+                  </div>
+                  <div>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Thời gian thực hiện</Text>
+                    <Text className="font-semibold text-slate-800 block">
+                      {data?.startDate ? `${dayjs(data.startDate).format('DD/MM/YYYY')} → ${dayjs(data.endDate).format('DD/MM/YYYY')}` : '---'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Mô tả chi tiết</Text>
+                    <Text className="text-slate-600 italic block">
+                      "{campaignData?.description || 'Không có mô tả'}"
+                    </Text>
+                  </div>
+                </div>
+              </div>
+            </Col>
+
+            <Col span={12}>
+              <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 space-y-4 h-full shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-200/90 pb-3.5 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100/80 text-emerald-600 flex items-center justify-center font-bold">
+                      <BookOpen size={16} />
+                    </div>
+                    <Title level={5} className="!mb-0 text-slate-800 font-bold tracking-tight text-base">
+                      Tiến độ thiết lập CLO & Môn học
+                    </Title>
+                  </div>
+                  <Tag color="blue" className="rounded-full px-3 py-0.5 font-bold text-xs border-none">
+                    {progressPercent}% Hoàn thành
+                  </Tag>
+                </div>
+
+                <Progress percent={progressPercent} strokeColor={{ '0%': '#2563eb', '100%': '#059669' }} size={['100%', 12]} />
+
+                <div className="grid grid-cols-3 gap-3 text-center pt-2">
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng môn học</Text>
+                    <Text className="text-base font-bold text-slate-800 mt-0.5 block">{totalCourses} môn</Text>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                    <Text className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Đã thiết lập CLO</Text>
+                    <Text className="text-base font-bold text-emerald-600 mt-0.5 block">{coursesWithClo} môn</Text>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Chưa thiết lập CLO</Text>
+                    <Text className="text-base font-bold text-slate-500 mt-0.5 block">{coursesUnset} môn</Text>
+                  </div>
+                </div>
+              </div>
+            </Col>
+          </Row>
+        )}
+
+        {/* Tab Navigation (Wireframe Row 4) */}
+        {isView && (
+          <div className="pt-2 border-b border-slate-200">
+            <div className="flex items-center gap-8 font-semibold text-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTabKey('steps')}
+                className={`pb-3 border-b-2 transition-all cursor-pointer ${
+                  activeTabKey === 'steps' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Overview / Quy trình ({workflowSteps.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabKey('courses')}
+                className={`pb-3 border-b-2 transition-all cursor-pointer ${
+                  activeTabKey === 'courses' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Học phần / Môn học ({totalCourses})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabKey('participants')}
+                className={`pb-3 border-b-2 transition-all cursor-pointer ${
+                  activeTabKey === 'participants' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Người tham gia
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabKey('history')}
+                className={`pb-3 border-b-2 transition-all cursor-pointer ${
+                  activeTabKey === 'history' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Lịch sử tác nghiệp
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Breadcrumb
@@ -449,95 +947,6 @@ export default function SurveyCampaignForm() {
           { title: isNew ? 'Tạo mới' : (isView ? 'Chi tiết' : 'Chỉnh sửa') },
         ]}
       />
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            icon={<ArrowLeft className="w-4 h-4" />}
-            onClick={() => router.push('/survey/campaigns')}
-            className="rounded-lg hover:bg-slate-100 border-none flex items-center"
-          >
-            Quay lại
-          </Button>
-          <div className="h-6 w-[1px] bg-slate-200" />
-          <div>
-            <div className="flex items-center gap-3">
-              <Title level={2} className="!mb-0 !text-slate-800 tracking-tight">
-                {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? campaignData?.name : `Chỉnh sửa: ${campaignData?.name}`)}
-              </Title>
-              {!isNew && (
-                <div className="mt-1">
-                  {(() => {
-                    const status = (isView ? campaignData?.status : form.getFieldValue('status')) || 'DRAFT';
-                    const statusMap: any = {
-                      'DRAFT': { color: 'default', text: 'Bản nháp' },
-                      'ACTIVE': { color: 'processing', text: 'Đang diễn ra' },
-                      'COMPLETED': { color: 'success', text: 'Đã kết thúc' },
-                      'APPROVED': { color: 'gold', text: 'Đã phê duyệt (Synced)' },
-                      'CANCELLED': { color: 'error', text: 'Đã hủy' }
-                    };
-                    const config = statusMap[status] || statusMap['DRAFT'];
-                    return (
-                      <Tag color={config.color} className="rounded-full px-3 py-0.5 border-none font-bold text-[11px] uppercase tracking-wider shadow-sm">
-                        {config.text}
-                      </Tag>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-            <Paragraph type="secondary" className="!mb-0 text-slate-500 font-medium">
-              {isNew ? 'Khởi tạo đợt khảo sát và gán quy trình thực hiện' : (isView ? 'Theo dõi tiến độ và quản lý đợt khảo sát' : 'Cập nhật thông tin và cấu hình các bước')}
-            </Paragraph>
-          </div>
-        </div>
-        {!isView ? (
-          <Button
-            type="primary"
-            icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
-            onClick={() => form.submit()}
-            disabled={isSubmitting || (isNew && !selectedWorkflowId)}
-            className="rounded-xl px-8 h-11 font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-100 border-none transition-all"
-          >
-            {isSubmitting ? 'Đang xử lý...' : (isNew ? 'Khởi tạo đợt khảo sát' : 'Lưu thay đổi')}
-          </Button>
-        ) : (
-          <Space>
-            {campaignData?.status !== 'APPROVED' && (
-              <Button
-                type="primary"
-                icon={<Edit size={18} />}
-                onClick={() => {
-                  editForm.setFieldsValue({
-                    description: campaignData?.description,
-                    range: [dayjs(campaignData?.startDate), dayjs(campaignData?.endDate)]
-                  });
-                  setIsEditModalOpen(true);
-                }}
-                className="rounded-xl px-8 h-11 font-semibold bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 border-none transition-all"
-              >
-                Chỉnh sửa thông tin
-              </Button>
-            )}
-            {campaignData?.status !== 'APPROVED' && (
-              <Button
-                type="primary"
-                icon={<CheckCircle2 size={18} />}
-                onClick={() => {
-                  Modal.confirm({
-                    title: 'Xác nhận phê duyệt',
-                    content: 'Sau khi phê duyệt, dữ liệu khảo sát sẽ được đồng bộ ngược lại vào danh mục Master Data (Chương trình đào tạo & Môn học). Bạn có chắc chắn muốn thực hiện?',
-                    onOk: handleApprove
-                  });
-                }}
-                className="rounded-xl px-8 h-11 font-semibold bg-gold-600 hover:bg-gold-700 shadow-lg shadow-gold-100 border-none transition-all bg-[#d4af37]"
-              >
-                Phê duyệt & Đồng bộ
-              </Button>
-            )}
-          </Space>
-        )}
-      </div>
 
       <Card className="shadow-sm border-slate-200 rounded-3xl overflow-hidden min-h-[600px] relative" styles={{ body: { padding: 0 } }}>
         {isLoading && (
@@ -551,8 +960,54 @@ export default function SurveyCampaignForm() {
 
         {isView ? (
           <div className="flex flex-col h-full">
-            {renderCampaignHeader()}
-            {renderExecutionProgress()}
+            {renderWireframeHeader()}
+            {activeTabKey === 'steps' && renderExecutionProgress()}
+            {activeTabKey === 'courses' && (
+              <div className="p-8">
+                {/* Step 5 course view panel fallback */}
+                <div className="bg-slate-50/70 p-6 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+                    <div>
+                      <Title level={4} className="!mb-0">Danh sách Học phần / Môn học CTĐT</Title>
+                      <Text type="secondary" className="text-sm">Tất cả {programCourses.length} môn học thuộc chương trình đào tạo</Text>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {programCourses.map((c: any) => (
+                      <div key={c.id} className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <Text className="font-bold text-slate-800 text-sm block">{c.name}</Text>
+                          <Text className="text-xs text-slate-400">Mã môn: {c.code} • {c.credits || 3} tín chỉ</Text>
+                        </div>
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => {
+                            const s5Step = workflowSteps.find(s => s.configuration?.screenCode === 'S5_CLO');
+                            if (s5Step) {
+                              router.push(`/survey/campaigns/${id}/steps/${s5Step.id || 4}?courseId=${c.id}&mode=edit`);
+                            }
+                          }}
+                          className="rounded-lg text-xs font-semibold bg-blue-600"
+                        >
+                          Thiết kế CLO
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTabKey === 'participants' && (
+              <div className="p-12 text-center text-slate-400">
+                <Text>Danh sách Giảng viên, Hội đồng ĐBCL và các bên liên quan tham gia đợt khảo sát.</Text>
+              </div>
+            )}
+            {activeTabKey === 'history' && (
+              <div className="p-12 text-center text-slate-400">
+                <Text>Lịch sử ghi nhận tác nghiệp và nhật ký hệ thống.</Text>
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-12">
