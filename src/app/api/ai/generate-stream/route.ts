@@ -15,26 +15,35 @@ const LOREM_HTML_PARAGRAPHS = [
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, action } = await req.json();
+    const body = await req.json();
 
-    const textToStream = LOREM_HTML_PARAGRAPHS.join('\n');
-    const encoder = new TextEncoder();
+    const authHeader = req.headers.get('authorization');
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        // Break text into small chunks to simulate real streaming speed
-        const chunkSize = 15;
-        for (let i = 0; i < textToStream.length; i += chunkSize) {
-          const chunk = textToStream.slice(i, i + chunkSize);
-          controller.enqueue(encoder.encode(chunk));
-          // Small delay between chunks
-          await new Promise((resolve) => setTimeout(resolve, 40));
-        }
-        controller.close();
+    const rawBackendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+    const backendUrl = rawBackendUrl.replace(/\/api\/?$/, '');
+    const response = await fetch(`${backendUrl}/api/ai/generate-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader ? { 'Authorization': authHeader } : {}),
       },
+      body: JSON.stringify(body),
     });
 
-    return new Response(stream, {
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Backend API error (${response.status}):`, errorText);
+      return new Response(JSON.stringify({ error: `Backend error (${response.status}): ${errorText || response.statusText}` }), {
+        status: response.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!response.body) {
+      throw new Error('No body in backend response');
+    }
+
+    return new Response(response.body, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',

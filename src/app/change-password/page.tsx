@@ -34,20 +34,17 @@ export default function ChangePasswordPage() {
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      // In a real app, call backend to change password
-      // Since this is a simulation based on requirements:
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // If success:
+      await authService.changePassword({
+        oldPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+
       notification.success({
         message: 'Đổi mật khẩu thành công',
         description: 'Mật khẩu của bạn đã được cập nhật. Vui lòng đăng nhập lại.',
         placement: 'topRight',
       });
 
-      // Clear session and redirect to login
       authService.logout();
     } catch (error: any) {
       message.error(error.message || 'Đổi mật khẩu thất bại');

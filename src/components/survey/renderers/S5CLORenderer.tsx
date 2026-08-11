@@ -9,7 +9,7 @@ import {
 import { 
   PlusOutlined, DeleteOutlined, BookOutlined, EyeOutlined 
 } from '@ant-design/icons';
-import { ExternalLink, BookOpen, Layers, Sparkles, AlertCircle, Clock } from 'lucide-react';
+import { ExternalLink, BookOpen, Layers, Sparkles, AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import dayjs from 'dayjs';
 import { programService } from '@/services/programService';
@@ -150,19 +150,21 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
           }
         }
 
-        // 2. Fetch program courses
-        if (campaign?.programId) {
-          const [allCourses, assignedIds] = await Promise.all([
-            courseService.getAll(),
-            programService.getCourses(campaign.programId)
-          ]);
-          const filtered = allCourses.filter(c => assignedIds.includes(c.id));
-          setCourses(filtered);
+        // 2. Load survey campaign courses from campaign payload metadata
+        if (campaign?.courses && campaign.courses.length > 0) {
+          const mappedCourses = campaign.courses.map((c: any) => ({
+            id: c.courseId,
+            code: c.courseCode,
+            name: c.courseName,
+            credits: c.credits,
+            status: c.status
+          }));
+          setCourses(mappedCourses);
 
-          if (courseIdParam && filtered.some(c => c.id === courseIdParam)) {
+          if (courseIdParam && mappedCourses.some((c: any) => c.id === courseIdParam)) {
             setSelectedCourseId(courseIdParam);
-          } else if (!selectedCourseId && filtered.length > 0) {
-            setSelectedCourseId(filtered[0].id);
+          } else if (!selectedCourseId && mappedCourses.length > 0) {
+            setSelectedCourseId(mappedCourses[0].id);
           }
         }
       } catch (err) {
@@ -197,10 +199,38 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
     syllabusHtml: ''
   };
 
-  // Reset isDirty whenever selectedCourseId changes
+  // Fetch single course detail when selectedCourseId changes
   useEffect(() => {
     setIsDirty(false);
-  }, [selectedCourseId]);
+    if (!campaignId || !selectedCourseId) return;
+
+    const fetchCourseDetail = async () => {
+      try {
+        const detail = await surveyCampaignService.getCourseDetail(campaignId, selectedCourseId);
+        if (detail && detail.syllabusData) {
+          const parsedData = typeof detail.syllabusData === 'string' ? JSON.parse(detail.syllabusData) : detail.syllabusData;
+          setAllSyllabusData((prev) => ({
+            ...prev,
+            [selectedCourseId]: {
+              courseId: selectedCourseId,
+              courseCode: detail.courseCode,
+              courseName: detail.courseName,
+              credits: detail.credits,
+              clos: parsedData.clos || [],
+              syllabusHtml: parsedData.syllabusHtml || '',
+              updatedAt: detail.updatedAt,
+              updatedBy: detail.updatedBy,
+              ...parsedData
+            }
+          }));
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải chi tiết đề cương môn học:', err);
+      }
+    };
+
+    fetchCourseDetail();
+  }, [campaignId, selectedCourseId]);
 
   const updateCurrentSyllabus = (updated: CourseSyllabusData) => {
     const targetCourseId = selectedCourseId || currentCourse?.id;
@@ -404,6 +434,8 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
     },
   ];
 
+  const [activeTab, setActiveTab] = useState<'info' | 'clo' | 'syllabus' | 'assessment' | 'materials'>('clo');
+
   if (loading) {
     return (
       <div className="py-20 text-center space-y-3">
@@ -413,182 +445,307 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
     );
   }
 
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      {/* Banner highlight & Reference Link to PLO Step */}
-      <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-100 rounded-3xl flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-200">
-            <Sparkles size={24} />
-          </div>
-          <div>
-            <Title level={4} className="!mb-0 text-slate-800 font-bold">
-              Bước 5: Thiết kế Đề cương chi tiết & Chuẩn đầu ra Môn học (CLO)
+  // Handle single course saving via API
+  const handleSaveCourse = async () => {
+    if (!campaignId || !selectedCourseId) return;
+    try {
+      setLoading(true);
+      await surveyCampaignService.saveCourseDetail(campaignId, selectedCourseId, currentSyllabus, 'COMPLETED');
+      setIsDirty(false);
+      Modal.success({ title: 'Thành công', content: 'Đã lưu đề cương học phần môn ' + currentCourse?.name });
+    } catch (err) {
+      Modal.error({ title: 'Lỗi', content: 'Không thể lưu đề cương học phần' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Content render per active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'info':
+        return (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6">
+            <Title level={5} className="!mb-4 text-slate-800 font-bold border-b pb-2">
+              Thông tin chung về Học phần (Readonly từ Master Data)
             </Title>
-            <Text className="text-slate-500 text-sm font-medium">
-              Xây dựng CĐR từng môn học dựa trên Chuẩn đầu ra Chương trình đào tạo (PLO) đã phê duyệt.
-            </Text>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Tên học phần (VN)</Text>
+                <Text strong className="text-base text-slate-800">{currentCourse?.name || '---'}</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Tên tiếng Anh (EN)</Text>
+                <Text strong className="text-base text-slate-800">{currentCourse?.nameEn || currentCourse?.name || '---'}</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Mã học phần</Text>
+                <Tag color="blue" className="font-mono font-bold text-sm px-3 py-0.5 mt-1">{currentCourse?.code || '---'}</Tag>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Số tín chỉ</Text>
+                <Text strong className="text-base text-slate-800">{currentCourse?.credits || 3} Tín chỉ</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Phân bổ tiết (LT / BT / TH / Tự học)</Text>
+                <Text strong className="text-slate-800">30 LT / 15 BT / 0 TH / 90 Tự học</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Bộ môn / Khoa phụ trách</Text>
+                <Text strong className="text-slate-800">Bộ môn Công nghệ phần mềm - Khoa KH&KT Máy tính</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Học phần Tiên quyết</Text>
+                <Text className="text-slate-600 font-medium">Không có</Text>
+              </div>
+              <div>
+                <Text type="secondary" className="block text-xs uppercase font-bold text-slate-400">Học phần Học trước</Text>
+                <Text className="text-slate-600 font-medium">IT001 - Nhập môn Lập trình</Text>
+              </div>
+            </div>
           </div>
-        </div>
+        );
 
-        <div className="flex items-center gap-3">
-          <Button
-            icon={<EyeOutlined />}
-            onClick={() => setIsPloDrawerOpen(true)}
-            className="rounded-xl h-10 px-4 font-semibold border-slate-200 bg-white hover:border-blue-500 text-slate-700 flex items-center gap-2"
-          >
-            Xem nhanh danh sách PLO
-          </Button>
+      case 'clo':
+        return (
+          <div className="space-y-6">
+            {/* Card view for CLOs */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+              <div className="flex items-center justify-between border-b pb-4">
+                <div>
+                  <Title level={5} className="!mb-0 text-slate-800 font-bold">Mục tiêu & Chuẩn đầu ra môn học (CLO)</Title>
+                  <Text type="secondary" className="text-xs">Mỗi CLO được quản lý dưới dạng Card riêng biệt kèm Thang Bloom và ánh xạ PLO</Text>
+                </div>
+                {!isCourseSectionReadonly && (
+                  <Button type="primary" icon={<PlusOutlined />} onClick={addCLO} className="rounded-xl bg-emerald-600 hover:bg-emerald-700">
+                    Thêm CLO Card
+                  </Button>
+                )}
+              </div>
 
-          {s2StepId && (
-            <a
-              href={`/survey/campaigns/${campaignId}/steps/${s2StepId}?mode=view`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button
-                type="primary"
-                icon={<ExternalLink size={16} />}
-                className="rounded-xl h-10 px-5 font-semibold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-100 border-none flex items-center gap-2"
-              >
-                Mở Bước CĐR CTĐT
-              </Button>
-            </a>
-          )}
-        </div>
-      </div>
+              <div className="space-y-4">
+                {(currentSyllabus.clos || []).map((clo, index) => (
+                  <div key={clo.id || index} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 hover:border-blue-300 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Input
+                          value={clo.code}
+                          disabled={isCourseSectionReadonly}
+                          onChange={(e) => updateCLO(index, 'code', e.target.value)}
+                          className="w-24 font-bold text-blue-600 font-mono text-center rounded-lg"
+                        />
+                        <Tag color="blue" className="font-bold text-xs">CLO Card #{index + 1}</Tag>
+                      </div>
+                      {!isCourseSectionReadonly && (
+                        <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeCLO(index)} />
+                      )}
+                    </div>
 
-      {/* Course Selection Dropdown Bar */}
-      <Card className="rounded-2xl border-slate-200 shadow-sm p-4 bg-slate-50/60 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BookOpen className="w-5 h-5 text-blue-600" />
-            <Text strong className="text-slate-700 text-base">Chọn Môn học thiết kế:</Text>
-            <Select
-              value={selectedCourseId}
-              onChange={handleCourseSwitch}
-              className="w-[420px] rounded-xl h-11 text-base font-semibold"
-              options={courses.map(c => ({
-                label: `[${c.code}] ${c.name} (${c.credits || 3} tín chỉ)`,
-                value: c.id
-              }))}
+                    <div>
+                      <Text className="text-xs font-bold text-slate-500 block mb-1">Mô tả Chuẩn đầu ra (CLO)</Text>
+                      <Input.TextArea
+                        value={clo.content}
+                        disabled={isCourseSectionReadonly}
+                        placeholder="Nhập chi tiết mô tả chuẩn đầu ra môn học..."
+                        autoSize={{ minRows: 2, maxRows: 4 }}
+                        onChange={(e) => updateCLO(index, 'content', e.target.value)}
+                        className="rounded-xl"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-200/60">
+                      <div>
+                        <Text className="text-xs font-bold text-slate-500 block mb-1">Thang Bloom</Text>
+                        <Select
+                          value={clo.bloomLevel || '3'}
+                          disabled={isCourseSectionReadonly}
+                          className="w-full"
+                          onChange={(val) => updateCLO(index, 'bloomLevel', val)}
+                          options={[
+                            { label: 'L1: Ghi nhớ', value: '1' },
+                            { label: 'L2: Thông hiểu', value: '2' },
+                            { label: 'L3: Vận dụng', value: '3' },
+                            { label: 'L4: Phân tích', value: '4' },
+                            { label: 'L5: Đánh giá', value: '5' },
+                            { label: 'L6: Sáng tạo', value: '6' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <Text className="text-xs font-bold text-slate-500 block mb-1">Mức độ đạt được</Text>
+                        <Select
+                          value={clo.masteryLevel || 'I'}
+                          disabled={isCourseSectionReadonly}
+                          className="w-full"
+                          onChange={(val) => updateCLO(index, 'masteryLevel', val)}
+                          options={[
+                            { label: 'I (Giới thiệu)', value: 'I' },
+                            { label: 'R (Củng cố)', value: 'R' },
+                            { label: 'M (Thành thạo)', value: 'M' },
+                            { label: 'A (Đánh giá)', value: 'A' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <Text className="text-xs font-bold text-slate-500 block mb-1">Ánh xạ PLO (CTĐT)</Text>
+                        <Select
+                          mode="multiple"
+                          value={clo.mappedPlos || []}
+                          disabled={isCourseSectionReadonly}
+                          className="w-full"
+                          placeholder="Chọn PLO..."
+                          onChange={(val) => updateCLO(index, 'mappedPlos', val)}
+                          options={availablePlos.map(p => ({ label: `${p.code}: ${p.title}`, value: p.code }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'syllabus':
+        return (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+            <Title level={5} className="!mb-2 text-slate-800 font-bold">Nội dung giảng dạy (Syllabus theo Chương/Bài)</Title>
+            <RichtextEditor
+              value={currentSyllabus.syllabusHtml || ''}
+              disabled={isCourseSectionReadonly}
+              onChange={(val) => updateCurrentSyllabus({ ...currentSyllabus, syllabusHtml: val })}
+              placeholder="Nhập danh sách Chương, Bài học, thời lượng phân bổ và liên kết CLO..."
             />
           </div>
+        );
 
-          <div className="flex items-center gap-3">
-            {isDirty && (
-              <Tag color="warning" className="rounded-full px-3 py-1 font-semibold text-xs border-amber-200 bg-amber-50 text-amber-700 animate-pulse">
-                Có thay đổi chưa lưu
-              </Tag>
-            )}
-
-            {currentSyllabus?.updatedAt && (
-              <Tooltip title={`Thời gian lưu gần nhất: ${dayjs(currentSyllabus.updatedAt).format('DD/MM/YYYY HH:mm:ss')}`}>
-                <Tag icon={<Clock size={12} />} color="default" className="rounded-full px-3 py-1 font-medium text-xs border-slate-200 bg-slate-100 text-slate-600 flex items-center gap-1.5">
-                  Lần sửa cuối: {dayjs(currentSyllabus.updatedAt).format('DD/MM/YYYY HH:mm')} ({currentSyllabus.updatedBy || 'Quản trị viên'})
-                </Tag>
-              </Tooltip>
-            )}
-
-            {currentCourse && (
-              <>
-                <Tag color="blue" className="rounded-full px-3 py-1 font-bold text-xs">
-                  Mã: {currentCourse.code}
-                </Tag>
-                <Tag color="purple" className="rounded-full px-3 py-1 font-bold text-xs">
-                  {currentCourse.credits || 3} Tín chỉ
-                </Tag>
-              </>
-            )}
+      case 'assessment':
+        return (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6">
+            <Title level={5} className="!mb-2 text-slate-800 font-bold">Phương pháp & Trọng số Đánh giá học phần</Title>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-50 border rounded-xl space-y-2">
+                <Text strong className="block text-slate-700">Đánh giá Chuyên cần</Text>
+                <div className="text-2xl font-bold text-blue-600">10%</div>
+                <Tag color="cyan">Kiểm tra qua CLO1, CLO2</Tag>
+              </div>
+              <div className="p-4 bg-slate-50 border rounded-xl space-y-2">
+                <Text strong className="block text-slate-700">Đánh giá Giữa kỳ</Text>
+                <div className="text-2xl font-bold text-blue-600">30%</div>
+                <Tag color="cyan">Kiểm tra qua CLO2, CLO3</Tag>
+              </div>
+              <div className="p-4 bg-slate-50 border rounded-xl space-y-2">
+                <Text strong className="block text-slate-700">Đánh giá Cuối kỳ</Text>
+                <div className="text-2xl font-bold text-blue-600">60%</div>
+                <Tag color="cyan">Kiểm tra tất cả CLOs</Tag>
+              </div>
+            </div>
           </div>
-        </div>
-      </Card>
+        );
 
-      {/* Main CLO Form Section */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-5">
-          <div>
-            <Title level={4} className="!mb-1 font-bold text-slate-800">
-              Danh sách Chuẩn đầu ra Môn học (CLO)
-            </Title>
-            <Text className="text-slate-400 text-sm">
-              Môn học: <strong className="text-slate-700">{currentCourse?.name || '---'}</strong>
-            </Text>
+      case 'materials':
+        return (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6">
+            <Title level={5} className="!mb-2 text-slate-800 font-bold">Tài liệu học tập & Hướng dẫn Tự học</Title>
+            <div className="space-y-4">
+              <div>
+                <Text strong className="block text-slate-700 mb-1">Giáo trình chính</Text>
+                <Input placeholder="Tên sách, tác giả, nhà xuất bản, năm xuất bản..." disabled={isCourseSectionReadonly} defaultValue="Giáo trình Lập trình Hướng đối tượng - NXB ĐHQG 2023" />
+              </div>
+              <div>
+                <Text strong className="block text-slate-700 mb-1">Tài liệu tham khảo</Text>
+                <Input.TextArea placeholder="Danh sách sách tham khảo, bài báo..." disabled={isCourseSectionReadonly} rows={3} defaultValue="1. Clean Code - Robert C. Martin&#10;2. Design Patterns - Gang of Four" />
+              </div>
+            </div>
           </div>
+        );
+    }
+  };
 
-          {!isCourseSectionReadonly && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={addCLO}
-              className="rounded-xl px-5 h-10 font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-100 border-none flex items-center gap-2"
-            >
-              Thêm CLO môn học
-            </Button>
-          )}
-        </div>
+  // Calculate dynamic progress for completed courses
+  const completedCoursesCount = courses.filter(c => {
+    const syllabus = allSyllabusData[c.id];
+    return syllabus && Array.isArray(syllabus.clos) && syllabus.clos.length > 0;
+  }).length;
+  const totalCoursesCount = courses.length;
+  const progressPercent = totalCoursesCount > 0 ? Math.round((completedCoursesCount / totalCoursesCount) * 100) : 0;
 
-        <Table
-          dataSource={currentSyllabus.clos || []}
-          columns={columns}
-          pagination={false}
-          rowKey={(r) => r.id || r.code}
-          bordered
-          className="ant-table-custom"
-        />
-
-        <Divider className="my-8" />
-
-        {/* Detailed Syllabus Rich Text Editor */}
-        <div className="space-y-3">
-          <Title level={4} className="!mb-2 text-slate-800 font-bold">
-            Nội dung Đề cương chi tiết học phần (Syllabus)
-          </Title>
-          
-          <RichtextEditor
-            value={currentSyllabus.syllabusHtml || ''}
-            disabled={isCourseSectionReadonly}
-            onChange={(val) => updateCurrentSyllabus({ ...currentSyllabus, syllabusHtml: val })}
-            placeholder="Nhập nội dung đề cương chi tiết: Mô tả học phần, phân bổ thời lượng, hình thức đánh giá..."
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Clean & Basic Course Selector Bar */}
+      <div className="flex items-center justify-between flex-wrap gap-4 py-2 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <BookOpen className="w-5 h-5 text-blue-600" />
+          <Text strong className="text-slate-700 text-sm">Học phần:</Text>
+          <Select
+            value={selectedCourseId}
+            onChange={handleCourseSwitch}
+            className="w-[420px] font-semibold"
+            options={courses.map(c => ({
+              label: `[${c.code}] ${c.name} (${c.credits || 3} tín chỉ)`,
+              value: c.id
+            }))}
           />
+          <div className="flex items-center gap-1">
+            <Button
+              icon={<ChevronLeft size={16} />}
+              className="rounded-lg px-2"
+              disabled={courses.findIndex(c => c.id === selectedCourseId) <= 0}
+              onClick={() => {
+                const idx = courses.findIndex(c => c.id === selectedCourseId);
+                if (idx > 0) handleCourseSwitch(courses[idx - 1].id);
+              }}
+            />
+            <Button
+              icon={<ChevronRight size={16} />}
+              className="rounded-lg px-2"
+              disabled={courses.findIndex(c => c.id === selectedCourseId) >= courses.length - 1}
+              onClick={() => {
+                const idx = courses.findIndex(c => c.id === selectedCourseId);
+                if (idx < courses.length - 1) handleCourseSwitch(courses[idx + 1].id);
+              }}
+            />
+          </div>
         </div>
       </div>
+
+      {/* 5 Workspaces Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <Button type={activeTab === 'info' ? 'primary' : 'text'} onClick={() => setActiveTab('info')} className="rounded-xl font-bold">
+          Thông tin
+        </Button>
+        <Button type={activeTab === 'clo' ? 'primary' : 'text'} onClick={() => setActiveTab('clo')} className="rounded-xl font-bold">
+          Mục tiêu & CLO
+        </Button>
+        <Button type={activeTab === 'syllabus' ? 'primary' : 'text'} onClick={() => setActiveTab('syllabus')} className="rounded-xl font-bold">
+          Nội dung giảng dạy
+        </Button>
+        <Button type={activeTab === 'assessment' ? 'primary' : 'text'} onClick={() => setActiveTab('assessment')} className="rounded-xl font-bold">
+          Đánh giá
+        </Button>
+        <Button type={activeTab === 'materials' ? 'primary' : 'text'} onClick={() => setActiveTab('materials')} className="rounded-xl font-bold">
+          Tài liệu & Tự học
+        </Button>
+      </div>
+
+      {/* Workspace Active Panel */}
+      {renderTabContent()}
 
       {/* Reference Drawer for PLOs */}
       <Drawer
-        title={
-          <div className="flex items-center gap-2">
-            <BookOutlined className="text-blue-600" />
-            <span>Danh sách Chuẩn đầu ra CTĐT (PLO) Tham chiếu</span>
-          </div>
-        }
+        title="Danh sách Chuẩn đầu ra CTĐT (PLO) Tham chiếu"
         placement="right"
         width={500}
         open={isPloDrawerOpen}
         onClose={() => setIsPloDrawerOpen(false)}
-        className="rounded-l-3xl"
       >
-        <div className="space-y-4">
-          <Paragraph className="text-slate-500 text-sm">
-            Danh sách PLO bên dưới được phê duyệt từ Bước tiền đề (Bước 2 / Bước 3). Sử dụng thông tin này để đối chiếu khi gán ánh xạ CLO.
-          </Paragraph>
-
-          {availablePlos.length > 0 ? (
-            <div className="space-y-3">
-              {availablePlos.map((plo, idx) => (
-                <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 hover:border-blue-300 transition-all">
-                  <div className="flex items-center justify-between">
-                    <Tag color="blue" className="font-bold rounded-md font-mono">
-                      {plo.code}
-                    </Tag>
-                  </div>
-                  <Text strong className="text-slate-800 block">{plo.title}</Text>
-                </div>
-              ))}
+        <div className="space-y-3">
+          {availablePlos.map((plo, idx) => (
+            <div key={idx} className="p-4 bg-slate-50 border rounded-xl">
+              <Tag color="blue" className="font-bold mb-1">{plo.code}</Tag>
+              <Text strong className="block text-slate-800">{plo.title}</Text>
             </div>
-          ) : (
-            <Empty description="Chưa có dữ liệu PLO từ bước trước" />
-          )}
+          ))}
         </div>
       </Drawer>
     </div>

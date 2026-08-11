@@ -47,7 +47,9 @@ export interface ProgramCourse {
   programId: string;
   courseId: string;
   semester?: number;
-  isRequired: boolean;
+  isRequired?: boolean;
+  required?: boolean;
+  groupName?: string;
   courseName?: string;
   courseCode?: string;
   credits?: number;

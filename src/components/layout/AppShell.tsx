@@ -124,8 +124,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={cn(
-          'flex-1 flex flex-col min-h-screen transition-all duration-300',
-          sidebarCollapsed ? 'ml-[80px]' : 'ml-[280px]'
+          'flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300',
+          sidebarCollapsed ? 'ml-[80px]' : 'ml-[220px]'
         )}
       >
         <React.Suspense fallback={null}>
@@ -136,9 +136,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Topbar />
         </header>
 
-        <main className="p-8 flex-1 overflow-x-hidden relative">
+        <main className="pl-4 pr-0 py-6 pb-12 flex-1 min-w-0 relative">
           <MainLoading />
-          <div className="max-w-[1600px] mx-auto h-full">
+          <div className="w-full h-full pr-0">
             {isAuthenticated === true ? (
               children
             ) : (
@@ -151,11 +151,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </main>
-        
-        <footer className="py-6 px-8 text-center text-slate-400 text-xs border-t border-slate-200 bg-white">
-          <p className="font-semibold text-slate-500 uppercase tracking-wider mb-1">Trường Đại học Công nghệ eUni</p>
-          &copy; {new Date().getFullYear()} eUni Thesis System - Hệ Thống Tác Nghiệp Số Xây Dựng Và Cập Nhật CTDT
-        </footer>
       </div>
     </div>
   );

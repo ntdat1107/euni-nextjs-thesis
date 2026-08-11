@@ -33,7 +33,7 @@ import {
   TableCaption
 } from 'ckeditor5';
 import { Sparkles, Send, Loader2, RefreshCw, PlusCircle, Replace, X, Bot, Check } from 'lucide-react';
-import { Popover, Input, Button, Tag, Tooltip } from 'antd';
+import { Popover, Input, Button, Tag, Tooltip, Modal } from 'antd';
 
 import 'ckeditor5/translations/vi.js';
 import 'ckeditor5/ckeditor5.css';
@@ -91,11 +91,11 @@ export default function RichtextEditor({
     },
     heading: {
       options: [
-        { model: "paragraph", title: "Đoạn văn", class: "ck-heading_paragraph" },
-        { model: "heading1", view: "h1", title: "Tiêu đề 1", class: "ck-heading_heading1" },
-        { model: "heading2", view: "h2", title: "Tiêu đề 2", class: "ck-heading_heading2" },
-        { model: "heading3", view: "h3", title: "Tiêu đề 3", class: "ck-heading_heading3" },
-        { model: "heading4", view: "h4", title: "Tiêu đề 4", class: "ck-heading_heading4" },
+        { model: "paragraph", title: "Paragraph", class: "ck-heading_paragraph" },
+        { model: "heading1", view: "h1", title: "Heading 1", class: "ck-heading_heading1" },
+        { model: "heading2", view: "h2", title: "Heading 2", class: "ck-heading_heading2" },
+        { model: "heading3", view: "h3", title: "Heading 3", class: "ck-heading_heading3" },
+        { model: "heading4", view: "h4", title: "Heading 4", class: "ck-heading_heading4" },
       ],
     },
     fontSize: {
@@ -143,7 +143,7 @@ export default function RichtextEditor({
       ],
     },
     placeholder: placeholder || "Nhập nội dung...",
-    language: "vi",
+    language: "en",
     licenseKey: "GPL",
   };
 
@@ -156,9 +156,13 @@ export default function RichtextEditor({
     setHasCompletedStream(false);
 
     try {
+      const token = localStorage.getItem('euni_access_token');
       const response = await fetch('/api/ai/generate-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ prompt: finalPrompt }),
       });
 
@@ -167,12 +171,33 @@ export default function RichtextEditor({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
-
+      let buffer = '';
       while (true) {
         const { done, value: chunk } = await reader.read();
         if (done) break;
-        const text = decoder.decode(chunk, { stream: true });
-        accumulated += text;
+        buffer += decoder.decode(chunk, { stream: true });
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep partial line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const dataContent = line.slice(line.indexOf('data:') + 5);
+            accumulated += dataContent;
+          } else if (trimmed && !trimmed.startsWith(':')) {
+            accumulated += line;
+          }
+        }
+        setStreamedText(accumulated);
+      }
+
+      if (buffer.trim()) {
+        if (buffer.startsWith('data:')) {
+          accumulated += buffer.slice(buffer.indexOf('data:') + 5);
+        } else {
+          accumulated += buffer;
+        }
         setStreamedText(accumulated);
       }
 
@@ -206,30 +231,21 @@ export default function RichtextEditor({
   ];
 
   const aiPopoverContent = (
-    <div className="w-[480px] p-4 space-y-4 font-sans bg-white rounded-2xl">
+    <div className="w-full p-5 space-y-4 font-sans bg-white rounded-2xl">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-            <Sparkles size={16} className="animate-pulse" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
-              <span>Trợ lý AI Trí tuệ nhân tạo</span>
-              <Tag color="blue" className="border-none text-[10px] font-bold uppercase rounded-full px-2 py-0.2 bg-blue-50 text-blue-600">
-                GPT-4o Stream
-              </Tag>
-            </div>
-            <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung học thuật</div>
-          </div>
+      <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+          <Sparkles size={16} className="animate-pulse" />
         </div>
-        <Button
-          type="text"
-          size="small"
-          icon={<X size={16} className="text-slate-400 hover:text-slate-600" />}
-          onClick={() => setIsAiOpen(false)}
-          className="hover:bg-slate-100 rounded-full w-7 h-7 flex items-center justify-center"
-        />
+        <div>
+          <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <span>Trợ lý AI Trí tuệ nhân tạo</span>
+            <Tag color="blue" className="border-none text-[10px] font-bold uppercase rounded-full px-2 py-0.2 bg-blue-50 text-blue-600">
+              GPT-4o Stream
+            </Tag>
+          </div>
+          <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung học thuật</div>
+        </div>
       </div>
 
       {/* Quick Prompts */}
@@ -305,7 +321,7 @@ export default function RichtextEditor({
             )}
           </div>
 
-          <div className="max-h-[220px] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-700 custom-ai-scrollbar prose prose-slate max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5">
+          <div className="ck-content max-h-[300px] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-700 custom-ai-scrollbar">
             <div dangerouslySetInnerHTML={{ __html: streamedText }} />
             {isGenerating && (
               <span className="inline-block w-1.5 h-3.5 bg-blue-600 ml-1 animate-pulse rounded-xs align-middle" />
@@ -357,23 +373,28 @@ export default function RichtextEditor({
     >
       {!disabled && (
         <div className="absolute top-1.5 right-2 z-10 flex items-center gap-1">
-          <Popover
-            content={aiPopoverContent}
-            trigger="click"
-            open={isAiOpen}
-            onOpenChange={setIsAiOpen}
-            placement="bottomRight"
-            overlayClassName="ai-assistant-popover"
+          <Button
+            type="text"
+            size="small"
+            icon={<Sparkles size={14} className="text-indigo-600 animate-pulse" />}
+            onClick={() => setIsAiOpen(true)}
+            className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 hover:border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg px-2.5 h-7 flex items-center gap-1 shadow-sm transition-all hover:scale-105"
           >
-            <Button
-              type="text"
-              size="small"
-              icon={<Sparkles size={14} className="text-indigo-600 animate-pulse" />}
-              className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 hover:border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg px-2.5 h-7 flex items-center gap-1 shadow-sm transition-all hover:scale-105"
-            >
-              <span>Nhờ AI viết</span>
-            </Button>
-          </Popover>
+            <span>Nhờ AI viết</span>
+          </Button>
+
+          <Modal
+            open={isAiOpen}
+            onCancel={() => setIsAiOpen(false)}
+            footer={null}
+            width={540}
+            centered
+            destroyOnClose
+            styles={{ body: { padding: 0 } }}
+            className="ai-assistant-modal"
+          >
+            {aiPopoverContent}
+          </Modal>
         </div>
       )}
 
@@ -475,7 +496,9 @@ export default function RichtextEditor({
         .ck-content h3 { font-size: 1.125rem; font-weight: 600; margin: 0.6em 0 0.25em; color: #1e293b; }
         .ck-content h4 { font-size: 1rem; font-weight: 600; margin: 0.5em 0 0.2em; color: #1e293b; }
         .ck-content p { margin: 0 0 0.5em; }
-        .ck-content ul, .ck-content ol { padding-left: 1.5rem; margin: 0.4em 0; }
+        .ck-content ul { list-style-type: disc !important; padding-left: 1.5rem !important; margin: 0.4em 0 !important; }
+        .ck-content ol { list-style-type: decimal !important; padding-left: 1.5rem !important; margin: 0.4em 0 !important; }
+        .ck-content li { margin-bottom: 0.25em; }
         .ck-content a { color: #2563eb; text-decoration: underline; }
         
         /* Table styles */

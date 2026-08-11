@@ -23,7 +23,10 @@ export const authService = {
     }
   },
 
-  changePassword: async (data: any): Promise<void> => {
-    return api.post('/auth/change-password', data);
+  changePassword: async (data: { currentPassword?: string; oldPassword?: string; newPassword?: string }): Promise<void> => {
+    return api.put('/users/change-password', {
+      oldPassword: data.oldPassword || data.currentPassword,
+      newPassword: data.newPassword,
+    });
   }
 };
