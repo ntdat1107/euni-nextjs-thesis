@@ -1,7 +1,7 @@
 import { apiClient } from './api';
 
 export interface WorkflowStepDefinitionResponse {
-  id: string;
+  id: number;
   workflowType: string;
   stepCode: string;
   stepName: string;

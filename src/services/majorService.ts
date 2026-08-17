@@ -10,11 +10,11 @@ export const majorService = {
     return api.post('/majors', data);
   },
 
-  update: async (id: string, data: Partial<Major>): Promise<Major> => {
+  update: async (id: number | string, data: Partial<Major>): Promise<Major> => {
     return api.put(`/majors/${id}`, data);
   },
 
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: number | string): Promise<void> => {
     return api.delete(`/majors/${id}`);
   }
 };

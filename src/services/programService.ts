@@ -10,19 +10,23 @@ export const programService = {
     return api.post('/programs', data);
   },
 
-  update: async (id: string, data: Partial<Program>): Promise<Program> => {
+  update: async (id: number | string, data: Partial<Program>): Promise<Program> => {
     return api.put(`/programs/${id}`, data);
   },
 
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: number | string): Promise<void> => {
     return api.delete(`/programs/${id}`);
   },
   
-  assignCourses: async (id: string, courseIds: string[]): Promise<void> => {
+  assignCourses: async (id: number | string, courseIds: (number | string)[]): Promise<void> => {
     return api.post(`/programs/${id}/courses`, { courseIds });
   },
 
-  getCourses: async (id: string): Promise<string[]> => {
+  getCourses: async (id: number | string): Promise<(number | string)[]> => {
     return api.get(`/programs/${id}/courses`);
+  },
+
+  getCoursesDetail: async (id: number | string): Promise<any[]> => {
+    return api.get(`/programs/${id}/courses/detail`);
   }
 };

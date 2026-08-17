@@ -31,6 +31,7 @@ export default function SurveyStepPage() {
 
   const [prerequisiteLocked, setPrerequisiteLocked] = useState(false);
   const [prerequisiteStepName, setPrerequisiteStepName] = useState('');
+  const [canEditRole, setCanEditRole] = useState(true);
 
   const fetchData = async () => {
     try {
@@ -38,7 +39,10 @@ export default function SurveyStepPage() {
       const data = await surveyCampaignService.getById(id as string);
       setCampaign(data);
       
-      const foundStep = data.steps.find((s: any) => s.id === stepId) || data.steps[parseInt(stepId as string)];
+      const foundStep = data.steps.find((s: any) => String(s.id) === String(stepId))
+        || data.steps.find((s: any) => String(s.stepIndex) === String(stepId))
+        || data.steps[parseInt(stepId as string) - 1]
+        || data.steps[parseInt(stepId as string)];
       if (foundStep) {
         const config = typeof foundStep.configuration === 'string' ? JSON.parse(foundStep.configuration) : foundStep.configuration;
         const result = typeof foundStep.resultData === 'string' ? JSON.parse(foundStep.resultData) : (foundStep.resultData || {});
@@ -71,9 +75,33 @@ export default function SurveyStepPage() {
         } else {
           setPrerequisiteLocked(false);
         }
+
+        // Check RBAC permission for CU (Create/Update) based on user's roles
+        let userRoles: string[] = [];
+        try {
+          const userStr = localStorage.getItem('euni_user');
+          if (userStr) {
+            const parsedUser = JSON.parse(userStr);
+            userRoles = (parsedUser.roles || []).map((r: string) => r.toUpperCase());
+          }
+        } catch (e) {
+          console.error('Failed to parse logged in user roles', e);
+        }
+
+        const allowedPerformerRoles: string[] = (
+          Array.isArray(config?.performerRoles) && config.performerRoles.length > 0
+            ? config.performerRoles
+            : (config?.performerRole ? [config.performerRole] : [])
+        ).map((r: string) => r.toUpperCase());
+
+        // Admin always has full edit rights. If allowedPerformerRoles is empty, default to allow.
+        const isAdmin = userRoles.includes('ADMIN') || userRoles.includes('ROLE_ADMIN');
+        const hasPerformerRole = allowedPerformerRoles.length === 0 || isAdmin || userRoles.some(ur => allowedPerformerRoles.includes(ur));
+
+        setCanEditRole(hasPerformerRole);
         
         const isCampaignApproved = (data?.status || '').toUpperCase() === 'APPROVED';
-        const canEditByStatus = !isCampaignApproved && !isLockedByPrereq;
+        const canEditByStatus = !isCampaignApproved && !isLockedByPrereq && hasPerformerRole;
 
         if (!canEditByStatus) {
           setIsEdit(false);
@@ -100,8 +128,23 @@ export default function SurveyStepPage() {
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      await surveyCampaignService.saveStepData(id as string, stepId as string, formData);
-      message.success('Đã lưu thông tin bước khảo sát');
+      const screenCode = step?.configuration?.screenCode;
+
+      if (screenCode === 'S5_CLO' && formData?.courseId) {
+        // S5_CLO: save per-course syllabus via dedicated API
+        await surveyCampaignService.saveCourseDetail(
+          id as string,
+          formData.courseId,
+          formData,
+          'COMPLETED'
+        );
+        message.success(`Đã lưu đề cương học phần [${formData.courseCode || formData.courseId}]`);
+      } else {
+        // Default: save step-level result data
+        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, formData);
+        message.success('Đã lưu thông tin bước khảo sát');
+      }
+
       setIsEdit(false);
       await fetchData();
     } catch (error) {
@@ -165,7 +208,7 @@ export default function SurveyStepPage() {
     );
   }
 
-  const hasActions = (campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked) || isEdit;
+  const hasActions = (campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole) || isEdit;
 
   return (
     <AppShell>
@@ -232,6 +275,18 @@ export default function SurveyStepPage() {
           </div>
         )}
 
+        {!prerequisiteLocked && !canEditRole && campaign?.status !== 'APPROVED' && (
+          <div className="mb-2 p-4 bg-blue-50/80 rounded-sm border border-blue-200 flex items-center gap-3 text-blue-900 shadow-none">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            <div>
+              <Text strong className="text-blue-900 block font-bold text-sm">Chế độ xem (View-only)</Text>
+              <Text className="text-blue-700 text-xs font-medium">
+                Tài khoản của bạn không nằm trong <strong>Nhóm Thực hiện / Biên soạn</strong> được phân công cho bước này nên không thể thực hiện chỉnh sửa (CU).
+              </Text>
+            </div>
+          </div>
+        )}
+
         {/* Content Section */}
         <div className="bg-white rounded-md border border-slate-200/80 shadow-none overflow-hidden p-6 min-h-0 flex-1">
           {renderContent()}
@@ -241,13 +296,13 @@ export default function SurveyStepPage() {
         {hasActions && (
           <ActionBar
             actions={
-              campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked
+              campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole
                 ? [
                     {
                       key: 'edit',
                       label: 'Chỉnh sửa',
                       type: 'primary',
-                      icon: <Edit size={14} />,
+                      icon: <Edit size={13} />,
                       onClick: () => setIsEdit(true),
                     },
                   ]
@@ -270,7 +325,7 @@ export default function SurveyStepPage() {
                       label: 'Lưu thông tin',
                       type: 'primary',
                       loading: isSaving,
-                      icon: <Save size={14} />,
+                      icon: <Save size={13} />,
                       onClick: handleSave,
                     },
                   ]

@@ -35,7 +35,7 @@ export default function SurveyCampaignForm() {
   const isView = !isNew;
 
   const [form] = Form.useForm();
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | string | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -153,7 +153,7 @@ export default function SurveyCampaignForm() {
 
   useEffect(() => {
     if (isNew && selectedWorkflowId && workflows.length > 0) {
-      const wf = workflows.find(w => w.id === selectedWorkflowId);
+      const wf = workflows.find(w => String(w.id) === String(selectedWorkflowId));
       if (wf && wf.jsonContent) {
         try {
           const parsed = JSON.parse(wf.jsonContent);
@@ -353,9 +353,19 @@ export default function SurveyCampaignForm() {
                         </div>
                       </td>
                       <td className="px-3 py-4">
-                        <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium text-xs max-w-full truncate m-0">
-                          {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
-                        </Tag>
+                        <div className="flex flex-wrap gap-1">
+                          {Array.isArray(step.configuration?.performerRoles) && step.configuration.performerRoles.length > 0 ? (
+                            step.configuration.performerRoles.map((rCode: string, rIdx: number) => (
+                              <Tag key={rIdx} color="emerald" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-800 font-medium text-xs m-0">
+                                {roles.find(r => r.code === rCode)?.name || rCode}
+                              </Tag>
+                            ))
+                          ) : (
+                            <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium text-xs max-w-full truncate m-0">
+                              {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
+                            </Tag>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-4">
                         <div className="flex items-center gap-1.5 text-slate-500">
@@ -588,12 +598,29 @@ export default function SurveyCampaignForm() {
                         {step.title}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-100">
-                          {roles.find(r => r.code === step.configuration?.performerRole)?.name || 'Giảng viên Biên soạn'}
-                        </span>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
-                          {roles.find(r => r.code === step.configuration?.approverRole)?.name || 'Trưởng Khoa / Trưởng Bộ môn'}
-                        </span>
+                        {Array.isArray(step.configuration?.performerRoles) && step.configuration.performerRoles.length > 0 ? (
+                          step.configuration.performerRoles.map((rCode: string, rIdx: number) => (
+                            <span key={rIdx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                              {roles.find(r => r.code === rCode)?.name || rCode}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
+                          </span>
+                        )}
+
+                        {Array.isArray(step.configuration?.approverRoles) && step.configuration.approverRoles.length > 0 ? (
+                          step.configuration.approverRoles.map((rCode: string, rIdx: number) => (
+                            <span key={rIdx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+                              {roles.find(r => r.code === rCode)?.name || rCode}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+                            {roles.find(r => r.code === step.configuration?.approverRole)?.name || '---'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Col>

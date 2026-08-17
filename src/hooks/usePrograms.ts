@@ -23,7 +23,7 @@ export function usePrograms() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Program> }) => programService.update(id, data),
+    mutationFn: ({ id, data }: { id: number | string; data: Partial<Program> }) => programService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs'] });
       message.success('Cập nhật chương trình đào tạo thành công');
@@ -34,7 +34,7 @@ export function usePrograms() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => programService.delete(id),
+    mutationFn: (id: number | string) => programService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs'] });
       message.success('Xóa chương trình đào tạo thành công');
@@ -45,7 +45,7 @@ export function usePrograms() {
   });
 
   const assignCoursesMutation = useMutation({
-    mutationFn: ({ id, courseIds }: { id: string; courseIds: string[] }) => programService.assignCourses(id, courseIds),
+    mutationFn: ({ id, courseIds }: { id: number | string; courseIds: (number | string)[] }) => programService.assignCourses(id, courseIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs'] });
       message.success('Cập nhật danh sách môn học thành công');

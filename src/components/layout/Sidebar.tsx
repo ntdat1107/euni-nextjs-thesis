@@ -5,18 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
+  FolderKanban,
+  Briefcase,
+  Award,
   GitBranch,
-  ClipboardList,
   GraduationCap,
   BarChart3,
   Shield,
   ChevronDown,
   ChevronLeft,
-  Box,
   User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from 'antd';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -29,6 +29,7 @@ interface NavItemProps {
   label: string;
   icon?: React.ElementType;
   path?: string;
+  roles?: string[]; // Allowed roles (if empty, available to all)
   children?: NavItemProps[];
   collapsed?: boolean;
 }
@@ -39,41 +40,67 @@ const NAV_ITEMS: NavItemProps[] = [
     label: 'Bảng điều khiển',
     icon: LayoutDashboard,
     path: '/',
+    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
+  },
+  {
+    id: 'projects',
+    label: 'Dự án mở/sửa ngành',
+    icon: FolderKanban,
+    path: '/curriculum/projects',
+    roles: ['DTDH', 'DEAN', 'COMMITTEE', 'QA'],
+  },
+  {
+    id: 'workspace',
+    label: 'Workspace 9 bước',
+    icon: Briefcase,
+    path: '/curriculum/workspace',
+    roles: ['DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
+  },
+  {
+    id: 'appraisal',
+    label: 'Hội đồng thẩm định',
+    icon: Award,
+    path: '/curriculum/appraisal',
+    roles: ['DTDH', 'DEAN', 'COUNCIL'],
   },
   {
     id: 'workflow',
     label: 'Quy trình',
     icon: GitBranch,
+    roles: ['ADMIN', 'DTDH'],
     children: [
-      { id: 'workflow-templates', label: 'Mẫu quy trình', path: '/workflow/templates' },
-      { id: 'workflow-master-steps', label: 'Kho bước mẫu', path: '/workflow/master-steps' },
+      { id: 'workflow-templates', label: 'Mẫu quy trình', path: '/workflow/templates', roles: ['ADMIN', 'DTDH'] },
+      { id: 'workflow-master-steps', label: 'Kho bước mẫu', path: '/workflow/master-steps', roles: ['ADMIN', 'DTDH'] },
     ],
   },
   {
     id: 'master-data',
     label: 'Dữ liệu gốc',
     icon: GraduationCap,
+    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER'],
     children: [
-      { id: 'majors', label: 'Ngành học', path: '/master-data/majors' },
-      { id: 'programs', label: 'Chương trình', path: '/master-data/programs' },
-      { id: 'subjects', label: 'Học phần', path: '/master-data/subjects' },
+      { id: 'majors', label: 'Ngành học', path: '/master-data/majors', roles: ['ADMIN', 'DTDH'] },
+      { id: 'programs', label: 'Chương trình', path: '/master-data/programs', roles: ['ADMIN', 'DTDH'] },
+      { id: 'subjects', label: 'Học phần', path: '/master-data/subjects', roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER'] },
     ],
   },
   {
     id: 'survey',
     label: 'Khảo sát',
     icon: BarChart3,
+    roles: ['ADMIN', 'DTDH', 'DEAN', 'QA'],
     children: [
-      { id: 'campaigns', label: 'Đợt khảo sát', path: '/survey/campaigns' },
+      { id: 'campaigns', label: 'Đợt khảo sát', path: '/survey/campaigns', roles: ['ADMIN', 'DTDH', 'DEAN', 'QA'] },
     ],
   },
   {
     id: 'admin',
     label: 'Hệ thống',
     icon: Shield,
+    roles: ['ADMIN'],
     children: [
-      { id: 'users', label: 'Người dùng', path: '/admin/users' },
-      { id: 'rbac', label: 'Phân quyền', path: '/admin/rbac' },
+      { id: 'users', label: 'Người dùng', path: '/admin/users', roles: ['ADMIN'] },
+      { id: 'rbac', label: 'Phân quyền (RBAC)', path: '/admin/rbac', roles: ['ADMIN'] },
     ],
   },
   {
@@ -81,6 +108,7 @@ const NAV_ITEMS: NavItemProps[] = [
     label: 'Hồ sơ người dùng',
     icon: User,
     path: '/profile',
+    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
   },
 ];
 
@@ -157,6 +185,31 @@ export default function Sidebar({
     });
   };
 
+  const userRoles: string[] = React.useMemo(() => {
+    if (!currentUser || !currentUser.roles) return ['ADMIN']; // Default fallback for dev/admin
+    if (Array.isArray(currentUser.roles)) {
+      return currentUser.roles.map((r: any) => (typeof r === 'string' ? r : r.code));
+    }
+    return [];
+  }, [currentUser]);
+
+  const filterItemByRole = React.useCallback((item: NavItemProps): boolean => {
+    if (!item.roles || item.roles.length === 0) return true;
+    return item.roles.some((role) => userRoles.includes(role));
+  }, [userRoles]);
+
+  const visibleNavItems = React.useMemo(() => {
+    return NAV_ITEMS.filter(filterItemByRole).map((item) => {
+      if (item.children) {
+        return {
+          ...item,
+          children: item.children.filter(filterItemByRole),
+        };
+      }
+      return item;
+    }).filter(item => !item.children || item.children.length > 0);
+  }, [filterItemByRole]);
+
   return (
     <aside
       className={cn(
@@ -182,7 +235,7 @@ export default function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 py-4 px-3 overflow-y-auto custom-scrollbar">
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <li key={item.id}>
               {item.children ? (
                 <>

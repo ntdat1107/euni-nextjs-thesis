@@ -151,7 +151,7 @@ export default function WorkflowEditorPage() {
         setMode('view');
 
         // Chuyển hướng sang ID của phiên bản chính thức mới
-        if (result.id !== id) {
+        if (String(result.id) !== String(id)) {
           router.replace(`/workflow/templates/${result.id}`);
         }
       }

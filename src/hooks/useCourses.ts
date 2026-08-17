@@ -23,7 +23,7 @@ export function useCourses() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Course> }) => courseService.update(id, data),
+    mutationFn: ({ id, data }: { id: number | string; data: Partial<Course> }) => courseService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['courses'] });
       message.success('Cập nhật học phần thành công');
@@ -34,7 +34,7 @@ export function useCourses() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => courseService.delete(id),
+    mutationFn: (id: number | string) => courseService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['courses'] });
       message.success('Xóa học phần thành công');

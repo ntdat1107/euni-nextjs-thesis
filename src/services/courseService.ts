@@ -10,11 +10,11 @@ export const courseService = {
     return api.post('/courses', data);
   },
 
-  update: async (id: string, data: Partial<Course>): Promise<Course> => {
+  update: async (id: number | string, data: Partial<Course>): Promise<Course> => {
     return api.put(`/courses/${id}`, data);
   },
 
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: number | string): Promise<void> => {
     return api.delete(`/courses/${id}`);
   }
 };

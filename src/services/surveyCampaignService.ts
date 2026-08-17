@@ -12,15 +12,15 @@ export interface SurveyCampaignRequest {
   code: string;
   name: string;
   description?: string;
-  programId: string;
-  workflowTemplateId: string;
+  programId: number | string;
+  workflowTemplateId: number | string;
   startDate: string;
   endDate: string;
   steps: SurveyCampaignStepRequest[];
 }
 
 export interface SurveyCampaignStepResponse {
-  id: string;
+  id: number;
   stepIndex: number;
   stepName: string;
   deadline?: string;
@@ -31,8 +31,8 @@ export interface SurveyCampaignStepResponse {
 }
 
 export interface SurveyCampaignCourseMeta {
-  id: string;
-  courseId: string;
+  id: number;
+  courseId: number;
   courseCode: string;
   courseName: string;
   credits: number;
@@ -40,9 +40,9 @@ export interface SurveyCampaignCourseMeta {
 }
 
 export interface SurveyCampaignCourseDetail {
-  id: string;
-  campaignId: string;
-  courseId: string;
+  id: number;
+  campaignId: number;
+  courseId: number;
   courseCode: string;
   courseName: string;
   credits: number;
@@ -55,14 +55,14 @@ export interface SurveyCampaignCourseDetail {
 }
 
 export interface SurveyCampaignResponse {
-  id: string;
+  id: number;
   code: string;
   name: string;
   description?: string;
-  programId: string;
+  programId: number;
   programName?: string;
   program?: any;
-  workflowTemplateId: string;
+  workflowTemplateId: number;
   workflowTemplateName?: string;
   workflowTemplate?: any;
   startDate: string;
@@ -77,15 +77,15 @@ export const surveyCampaignService = {
     return api.get('/survey/campaigns', { signal });
   },
 
-  getById: async (id: string, signal?: AbortSignal): Promise<SurveyCampaignResponse> => {
+  getById: async (id: number | string, signal?: AbortSignal): Promise<SurveyCampaignResponse> => {
     return api.get(`/survey/campaigns/${id}`, { signal });
   },
 
-  getCourseDetail: async (campaignId: string, courseId: string): Promise<SurveyCampaignCourseDetail> => {
+  getCourseDetail: async (campaignId: number | string, courseId: number | string): Promise<SurveyCampaignCourseDetail> => {
     return api.get(`/survey/campaigns/${campaignId}/courses/${courseId}`);
   },
 
-  saveCourseDetail: async (campaignId: string, courseId: string, syllabusData: any, status?: string): Promise<SurveyCampaignCourseDetail> => {
+  saveCourseDetail: async (campaignId: number | string, courseId: number | string, syllabusData: any, status?: string): Promise<SurveyCampaignCourseDetail> => {
     return api.post(`/survey/campaigns/${campaignId}/courses/${courseId}/save`, { 
       syllabusData: typeof syllabusData === 'string' ? syllabusData : JSON.stringify(syllabusData),
       status: status || 'COMPLETED'
@@ -96,11 +96,11 @@ export const surveyCampaignService = {
     return api.post('/survey/campaigns', data);
   },
 
-  update: async (id: string, data: SurveyCampaignRequest): Promise<SurveyCampaignResponse> => {
+  update: async (id: number | string, data: SurveyCampaignRequest): Promise<SurveyCampaignResponse> => {
     return api.put(`/survey/campaigns/${id}`, data);
   },
 
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: number | string): Promise<void> => {
     return api.delete(`/survey/campaigns/${id}`);
   },
   
@@ -108,15 +108,15 @@ export const surveyCampaignService = {
     return api.get(`/survey/campaigns/check-code?code=${code}`);
   },
 
-  saveStepData: async (campaignId: string, stepId: string, resultData: any): Promise<SurveyCampaignStepResponse> => {
+  saveStepData: async (campaignId: number | string, stepId: number | string, resultData: any): Promise<SurveyCampaignStepResponse> => {
     return api.post(`/survey/campaigns/${campaignId}/steps/${stepId}/save`, { resultData: JSON.stringify(resultData) });
   },
 
-  approve: async (id: string): Promise<void> => {
+  approve: async (id: number | string): Promise<void> => {
     return api.post(`/survey/campaigns/${id}/approve`);
   },
 
-  cancel: async (id: string): Promise<SurveyCampaignResponse> => {
+  cancel: async (id: number | string): Promise<SurveyCampaignResponse> => {
     // TODO: RBAC Permission Check (PERM_SURVEY_CAMPAIGN_CANCEL)
     return api.post(`/survey/campaigns/${id}/cancel`);
   }

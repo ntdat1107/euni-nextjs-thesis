@@ -16,7 +16,7 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
   });
 
   const deleteUserMutation = useMutation({
-    mutationFn: (id: string) => userService.delete(id),
+    mutationFn: (id: number | string) => userService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Xóa người dùng thành công');
@@ -27,7 +27,7 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => 
+    mutationFn: ({ id, status }: { id: number | string; status: string }) => 
       userService.updateStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -36,7 +36,7 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (id: string) => userService.resetPassword(id),
+    mutationFn: (id: number | string) => userService.resetPassword(id),
     onSuccess: (data) => {
       message.success(`Mật khẩu tạm thời: ${data.tempPassword}`);
     },
@@ -53,7 +53,7 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, user }: { id: string; user: Partial<User> }) => userService.update(id, user),
+    mutationFn: ({ id, user }: { id: number | string; user: Partial<User> }) => userService.update(id, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       message.success('Cập nhật người dùng thành công');
@@ -67,7 +67,6 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
     mutationFn: (data: any) => apiClient.put('/users/change-password', data),
     onSuccess: () => {
       message.success('Đổi mật khẩu thành công. Vui lòng đăng nhập lại.');
-      // Optional: Redirect to login or auto update token
     },
     onError: (err: any) => {
       message.error(err.message || 'Đổi mật khẩu thất bại');
@@ -79,11 +78,11 @@ export function useUsers(options: { enabled?: boolean } = { enabled: true }) {
     isLoading,
     error,
     createUser: async (user: Partial<User>) => createUserMutation.mutateAsync(user),
-    updateUser: (id: string, user: Partial<User>) => updateUserMutation.mutate({ id, user }),
-    deleteUser: (id: string) => deleteUserMutation.mutate(id),
-    updateUserStatus: (id: string, status: string) => 
+    updateUser: (id: number | string, user: Partial<User>) => updateUserMutation.mutate({ id, user }),
+    deleteUser: (id: number | string) => deleteUserMutation.mutate(id),
+    updateUserStatus: (id: number | string, status: string) => 
       updateStatusMutation.mutate({ id, status }),
-    resetPassword: async (id: string) => resetPasswordMutation.mutateAsync(id),
+    resetPassword: async (id: number | string) => resetPasswordMutation.mutateAsync(id),
     changePassword: async (data: any) => changePasswordMutation.mutateAsync(data),
   };
 }

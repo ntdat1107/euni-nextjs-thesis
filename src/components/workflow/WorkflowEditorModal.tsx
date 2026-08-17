@@ -61,9 +61,9 @@ import { SortableStepItem, WorkflowStep } from './SortableStepItem';
 
 interface WorkflowEditorModalProps {
   open: boolean;
-  editingId?: string | null;
+  editingId?: number | string | null;
   onClose: () => void;
-  onSuccess: (id: string) => void;
+  onSuccess: (id: number | string) => void;
 }
 
 export default function WorkflowEditorModal({ open, editingId, onClose, onSuccess }: WorkflowEditorModalProps) {
@@ -115,7 +115,7 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
     }
   }, [open, editingId, form]);
 
-  const loadWorkflowData = async (id: string) => {
+  const loadWorkflowData = async (id: number | string) => {
     setLoading(true);
     try {
       let res = await workflowService.getById(id);
@@ -167,8 +167,22 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
               ? s.prerequisiteStepCodes 
               : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : 
                 (Array.isArray(nodeMatch?.data?.prerequisiteStepCodes) ? nodeMatch.data.prerequisiteStepCodes : (nodeMatch?.data?.prerequisiteStepCode ? [nodeMatch.data.prerequisiteStepCode] : [])));
+            
+            const execRoles = Array.isArray(s.executorRoles) && s.executorRoles.length > 0 
+              ? s.executorRoles 
+              : (s.executorRole ? [s.executorRole] : (nodeMatch?.data?.performerRoles || (nodeMatch?.data?.performerRole ? [nodeMatch.data.performerRole] : [])));
+
+            const appRoles = Array.isArray(s.approverRoles) && s.approverRoles.length > 0 
+              ? s.approverRoles 
+              : (s.approverRole ? [s.approverRole] : (nodeMatch?.data?.approverRoles || (nodeMatch?.data?.approverRole ? [nodeMatch.data.approverRole] : [])));
+
             return {
               ...s,
+              executorRoles: execRoles,
+              executorRole: execRoles[0] || '',
+              approverRoles: appRoles,
+              approverRole: appRoles[0] || '',
+              isDataLevelAuth: s.isDataLevelAuth !== undefined ? s.isDataLevelAuth : nodeMatch?.data?.isDataLevelAuth,
               prerequisiteStepCodes: prereqs,
               prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
             };
@@ -189,7 +203,9 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
       code: '',
       screenCode: '',
       executorRole: '',
+      executorRoles: [],
       approverRole: '',
+      approverRoles: [],
       prerequisiteStepCodes: [],
       prerequisiteStepCode: '',
       isRequired: true,
@@ -230,13 +246,13 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
     }
   };
 
-  const handleSelectMasterStep = (tempId: string, masterId: string) => {
-    const master = stepDefinitions.find(m => m.id === masterId);
+  const handleSelectMasterStep = (tempId: string, masterId: number | string) => {
+    const master = stepDefinitions.find(m => String(m.id) === String(masterId) || m.stepCode === masterId);
     if (!master) return;
 
     setSteps(steps.map(s => s.tempId === tempId ? {
       ...s,
-      masterStepId: master.id,
+      masterStepId: master.stepCode || master.id,
       name: master.stepName,
       code: master.stepCode,
       screenCode: master.stepCode,
@@ -260,6 +276,13 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
         const prereqs = Array.isArray(s.prerequisiteStepCodes) 
           ? s.prerequisiteStepCodes 
           : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : []);
+        const execRoles = Array.isArray(s.executorRoles) && s.executorRoles.length > 0 
+          ? s.executorRoles 
+          : (s.executorRole ? [s.executorRole] : []);
+        const appRoles = Array.isArray(s.approverRoles) && s.approverRoles.length > 0 
+          ? s.approverRoles 
+          : (s.approverRole ? [s.approverRole] : []);
+
         return {
           id: s.tempId,
           type: 'state',
@@ -268,8 +291,11 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
             label: s.name, 
             orderNo: i + 1,
             screenCode: s.screenCode,
-            performerRole: s.executorRole,
-            approverRole: s.approverRole,
+            performerRole: execRoles[0] || s.executorRole || '',
+            performerRoles: execRoles,
+            approverRole: appRoles[0] || s.approverRole || '',
+            approverRoles: appRoles,
+            isDataLevelAuth: !!s.isDataLevelAuth,
             requiredDocuments: s.requiredDocuments,
             prerequisiteStepCodes: prereqs,
             prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''

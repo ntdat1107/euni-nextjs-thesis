@@ -23,7 +23,7 @@ export function useMajors() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Major> }) => majorService.update(id, data),
+    mutationFn: ({ id, data }: { id: number | string; data: Partial<Major> }) => majorService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['majors'] });
       message.success('Cập nhật ngành học thành công');
@@ -34,7 +34,7 @@ export function useMajors() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => majorService.delete(id),
+    mutationFn: (id: number | string) => majorService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['majors'] });
       message.success('Xóa ngành học thành công');

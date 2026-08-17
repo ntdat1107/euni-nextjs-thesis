@@ -29,7 +29,7 @@ export function useRBAC() {
   });
 
   const deleteRoleMutation = useMutation({
-    mutationFn: (id: string) => rbacService.deleteRole(id),
+    mutationFn: (id: number | string) => rbacService.deleteRole(id),
     onSuccess: () => {
       roleCache.clearCache();
       queryClient.invalidateQueries({ queryKey: ['roles'] });
@@ -46,7 +46,7 @@ export function useRBAC() {
   });
 
   const deletePermissionMutation = useMutation({
-    mutationFn: (id: string) => rbacService.deletePermission(id),
+    mutationFn: (id: number | string) => rbacService.deletePermission(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['permissions'] });
       message.success('Xóa quyền thành công');
@@ -54,7 +54,7 @@ export function useRBAC() {
   });
 
   const updateRolePermissionsMutation = useMutation({
-    mutationFn: ({ roleId, permissionIds }: { roleId: string; permissionIds: string[] }) => 
+    mutationFn: ({ roleId, permissionIds }: { roleId: number | string; permissionIds: (number | string)[] }) => 
       rbacService.updateRolePermissions(roleId, permissionIds),
     onSuccess: () => {
       roleCache.clearCache();
@@ -68,10 +68,10 @@ export function useRBAC() {
     roles,
     isLoading: loadingRoles || loadingPermissions,
     addRole: (role: Partial<Role>) => createRoleMutation.mutate(role),
-    deleteRole: (id: string) => deleteRoleMutation.mutate(id),
+    deleteRole: (id: number | string) => deleteRoleMutation.mutate(id),
     addPermission: (permission: Partial<Permission>) => createPermissionMutation.mutate(permission),
-    deletePermission: (id: string) => deletePermissionMutation.mutate(id),
-    updateRolePermissions: (roleId: string, permissionIds: string[]) => 
+    deletePermission: (id: number | string) => deletePermissionMutation.mutate(id),
+    updateRolePermissions: (roleId: number | string, permissionIds: (number | string)[]) => 
       updateRolePermissionsMutation.mutate({ roleId, permissionIds }),
   };
 }

@@ -66,7 +66,7 @@ function CourseManagementContent() {
     } catch (e) {}
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: number | string) => {
     modal.confirm({
       title: 'Xác nhận xóa học phần?',
       content: 'Hành động này không thể hoàn tác.',

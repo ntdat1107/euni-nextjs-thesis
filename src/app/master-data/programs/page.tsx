@@ -22,7 +22,8 @@ import {
   Tabs,
   message,
   Alert,
-  Breadcrumb
+  Breadcrumb,
+  Drawer
 } from 'antd';
 import {
   Search,
@@ -71,22 +72,25 @@ function ProgramManagementContent() {
   const isLoading = loadingPrograms || loadingMajors;
   const [viewState, setViewState] = useState<'LIST' | 'EDIT'>('LIST');
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
-  const [selectedMajorId, setSelectedMajorId] = useState<string | undefined>(initialMajorId);
+  const [selectedMajorId, setSelectedMajorId] = useState<number | string | undefined>(initialMajorId);
   const [searchText, setSearchText] = useState('');
-  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
-  const [draftCourseIds, setDraftCourseIds] = useState<string[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<(number | string)[]>([]);
+  const [draftCourseIds, setDraftCourseIds] = useState<(number | string)[]>([]);
+  const [programCoursesDetail, setProgramCoursesDetail] = useState<any[]>([]);
+  const [selectedCourseForView, setSelectedCourseForView] = useState<any | null>(null);
+  const [isCourseDrawerOpen, setIsCourseDrawerOpen] = useState(false);
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
   const [isEditMode, setIsEditMode] = useState(false);
 
   const hasCourseChanges = React.useMemo(() => {
     if (selectedCourseIds.length !== draftCourseIds.length) return true;
-    const setA = new Set(selectedCourseIds);
-    return draftCourseIds.some(id => !setA.has(id));
+    const setA = new Set(selectedCourseIds.map(String));
+    return draftCourseIds.some(id => !setA.has(String(id)));
   }, [selectedCourseIds, draftCourseIds]);
 
   const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
-  const [selectedCoursesToAdd, setSelectedCoursesToAdd] = useState<string[]>([]);
+  const [selectedCoursesToAdd, setSelectedCoursesToAdd] = useState<(number | string)[]>([]);
 
   const handleOpenDetail = async (program?: Program) => {
     if (program) {
@@ -97,6 +101,8 @@ function ProgramManagementContent() {
         const currentCourseIds = await programService.getCourses(program.id);
         setSelectedCourseIds(currentCourseIds);
         setDraftCourseIds(currentCourseIds);
+        const details = await programService.getCoursesDetail(program.id);
+        setProgramCoursesDetail(details || []);
       } catch (e) {
         message.error('Không thể tải danh sách môn học');
       }
@@ -213,7 +219,7 @@ function ProgramManagementContent() {
   const filteredPrograms = programs.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchText.toLowerCase()) ||
       p.code.toLowerCase().includes(searchText.toLowerCase());
-    const matchesMajor = !selectedMajorId || p.majorId === selectedMajorId;
+    const matchesMajor = !selectedMajorId || String(p.majorId) === String(selectedMajorId);
     return matchesSearch && matchesMajor;
   });
 
@@ -503,11 +509,50 @@ function ProgramManagementContent() {
                                 </div>
                               </div>
 
-                              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Chuẩn đầu ra (PLO)</span>
-                                <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-line">
-                                  {form.getFieldValue('learningOutcomes') || <span className="text-slate-400 italic">Chưa cập nhật nội dung chuẩn đầu ra</span>}
+                              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Chuẩn đầu ra (PLO - Synced Metadata)</span>
+                                  {editingProgram?.data && (
+                                    <Tag color="success" className="rounded-full px-3 py-0.5 border-none font-bold text-[10px]">
+                                      Đã đồng bộ từ Khảo sát
+                                    </Tag>
+                                  )}
                                 </div>
+                                
+                                {(() => {
+                                  let syncedPlos: any[] = [];
+                                  if (editingProgram?.data) {
+                                    try {
+                                      const parsed = JSON.parse(editingProgram.data);
+                                      if (parsed && Array.isArray(parsed.plos)) {
+                                        syncedPlos = parsed.plos;
+                                      }
+                                    } catch (e) {}
+                                  }
+
+                                  if (syncedPlos.length > 0) {
+                                    return (
+                                      <div className="space-y-3 pt-2">
+                                        {syncedPlos.map((plo: any, pIdx: number) => (
+                                          <div key={pIdx} className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-start gap-3">
+                                            <Tag color="blue" className="font-mono font-bold text-xs rounded-lg px-2.5 py-0.5 shrink-0 mt-0.5">
+                                              {plo.code || plo.id || `PLO${pIdx + 1}`}
+                                            </Tag>
+                                            <div className="text-sm font-medium text-slate-800 leading-relaxed">
+                                              {plo.title || plo.content || plo.name}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-line">
+                                      {form.getFieldValue('learningOutcomes') || <span className="text-slate-400 italic">Chưa cập nhật nội dung chuẩn đầu ra</span>}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -582,9 +627,22 @@ function ProgramManagementContent() {
                           <div className="md:col-span-2">
                             <Form.Item
                               name="learningOutcomes"
-                              label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Chuẩn đầu ra (PLO)</span>}
+                              label={
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Chuẩn đầu ra (PLO)</span>
+                                  <span className="text-[11px] text-amber-600 font-semibold flex items-center gap-1">
+                                    <AlertCircle size={12} />
+                                    Chỉ được cập nhật qua Đợt khảo sát
+                                  </span>
+                                </div>
+                              }
                             >
-                              <Input.TextArea className="rounded-xl" rows={4} placeholder="Các năng lực sinh viên đạt được sau khi tốt nghiệp..." disabled={editingProgram?.hasUncompletedCampaign} />
+                              <Input.TextArea 
+                                className="rounded-xl bg-slate-50/80 text-slate-500 font-medium" 
+                                rows={4} 
+                                placeholder="Chuẩn đầu ra (PLO) được đồng bộ tự động từ Quy trình Khảo sát..." 
+                                disabled={true} 
+                              />
                             </Form.Item>
                           </div>
                         </div>
@@ -629,7 +687,7 @@ function ProgramManagementContent() {
                     {/* Single Full-width Course Table */}
                     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
                       <Table
-                        dataSource={courses.filter(c => draftCourseIds.includes(c.id))}
+                        dataSource={courses.filter(c => draftCourseIds.map(String).includes(String(c.id)))}
                         rowKey="id"
                         pagination={{
                           pageSize: 20,
@@ -668,14 +726,38 @@ function ProgramManagementContent() {
                             render: (tc) => <span className="font-bold text-slate-700 text-xs">{tc || 3}</span>
                           },
                           {
-                            title: 'Loại HP',
-                            key: 'required',
-                            width: 130,
-                            render: () => (
-                              <Tag color="blue" className="rounded-full px-3 py-0.5 border-none font-bold text-[11px]">
-                                Bắt buộc
-                              </Tag>
-                            )
+                            title: 'Trạng thái Đề cương & CLO',
+                            key: 'syncedData',
+                            width: 250,
+                            render: (_: any, record: any) => {
+                              const detail = programCoursesDetail.find(d => d.courseId === record.id);
+                              const hasData = !!(detail?.data);
+                              return (
+                                <div className="flex items-center justify-between gap-2">
+                                  {hasData ? (
+                                    <Tag color="success" className="rounded-full px-3 py-0.5 border-none font-bold text-[10px]">
+                                      Đã đồng bộ từ Khảo sát
+                                    </Tag>
+                                  ) : (
+                                    <Tag color="default" className="rounded-full px-3 py-0.5 border-none font-medium text-[10px] text-slate-400 bg-slate-100">
+                                      Chưa khảo sát
+                                    </Tag>
+                                  )}
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<Eye size={14} className="text-blue-600" />}
+                                    onClick={() => {
+                                      setSelectedCourseForView({ ...record, detail });
+                                      setIsCourseDrawerOpen(true);
+                                    }}
+                                    className="hover:bg-blue-50 text-blue-600 font-medium text-xs flex items-center gap-1 rounded-lg px-2"
+                                  >
+                                    Xem Đề cương
+                                  </Button>
+                                </div>
+                              );
+                            }
                           },
                           ...((isEditMode && !editingProgram?.hasUncompletedCampaign) ? [{
                             title: 'Thao tác',
@@ -725,7 +807,7 @@ function ProgramManagementContent() {
                       <div className="py-3 space-y-4">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                            Danh sách môn học khả dụng ({courses.filter(c => !draftCourseIds.includes(c.id)).length})
+                            Danh sách môn học khả dụng ({courses.filter(c => !draftCourseIds.map(String).includes(String(c.id))).length})
                           </span>
                           <Input.Search
                             placeholder="Tìm kiếm môn học..."
@@ -738,14 +820,14 @@ function ProgramManagementContent() {
 
                         <Table
                           dataSource={courses
-                            .filter(c => !draftCourseIds.includes(c.id))
+                            .filter(c => !draftCourseIds.map(String).includes(String(c.id)))
                             .filter(c => !searchText || c.name.toLowerCase().includes(searchText.toLowerCase()) || c.code.toLowerCase().includes(searchText.toLowerCase()))
                           }
                           rowKey="id"
                           rowSelection={{
                             type: 'checkbox',
                             selectedRowKeys: selectedCoursesToAdd,
-                            onChange: (selectedKeys) => setSelectedCoursesToAdd(selectedKeys as string[])
+                            onChange: (selectedKeys) => setSelectedCoursesToAdd(selectedKeys as (number | string)[])
                           }}
                           pagination={{
                             pageSize: 6,
@@ -787,6 +869,107 @@ function ProgramManagementContent() {
           />
         </Card>
       )}
+
+      {/* Drawer Xem Chi Tiết Đề Cương & CLO Môn Học */}
+      <Drawer
+        title={
+          <div className="flex items-center gap-3">
+            <BookOpen className="w-5 h-5 text-blue-600" />
+            <div>
+              <div className="font-bold text-slate-800 text-base">
+                Chi tiết Đề cương học phần: {selectedCourseForView?.name}
+              </div>
+              <div className="text-xs font-mono text-slate-500 font-semibold">
+                Mã môn: {selectedCourseForView?.code} | Số tín chỉ: {selectedCourseForView?.credits || 3}
+              </div>
+            </div>
+          </div>
+        }
+        width={720}
+        open={isCourseDrawerOpen}
+        onClose={() => {
+          setIsCourseDrawerOpen(false);
+          setSelectedCourseForView(null);
+        }}
+        destroyOnClose
+      >
+        {selectedCourseForView ? (
+          <div className="space-y-6 py-2">
+            <Alert
+              message="Thông tin được đồng bộ tự động"
+              description="Nội dung đề cương và chuẩn đầu ra (CLO) của môn học này được đồng bộ trực tiếp từ kết quả Đợt khảo sát đã duyệt. Không thể chỉnh sửa trực tiếp tại đây."
+              type="info"
+              showIcon
+              icon={<CheckCircle className="w-5 h-5 text-blue-600" />}
+              className="rounded-2xl border-blue-200 bg-blue-50/80 mb-4"
+            />
+
+            {(() => {
+              const detailDataStr = selectedCourseForView.detail?.data;
+              let parsedData: any = null;
+              if (detailDataStr) {
+                try {
+                  parsedData = JSON.parse(detailDataStr);
+                } catch (e) {}
+              }
+
+              if (!parsedData) {
+                return (
+                  <div className="text-center py-16 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400">
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <span className="text-sm font-medium">Môn học này chưa thực hiện khảo sát đề cương &amp; CLO</span>
+                  </div>
+                );
+              }
+
+              const clos = parsedData.clos || parsedData.courseLearningOutcomes || [];
+              const info = parsedData.info || parsedData;
+
+              return (
+                <div className="space-y-6">
+                  {/* General Course Info */}
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Thông tin tổng quan đề cương</span>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Tên tiếng Anh:</span>
+                        <span className="font-semibold text-slate-700">{info.englishName || '---'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Mô tả học phần:</span>
+                        <span className="font-semibold text-slate-700">{info.description || '---'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CLOs Section */}
+                  <div className="space-y-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Chuẩn đầu ra môn học (CLO)</span>
+                    {Array.isArray(clos) && clos.length > 0 ? (
+                      <div className="space-y-3">
+                        {clos.map((clo: any, cIdx: number) => (
+                          <div key={cIdx} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Tag color="purple" className="font-mono font-bold text-xs rounded-lg px-2.5 py-0.5">
+                                {clo.code || `CLO${cIdx + 1}`}
+                              </Tag>
+                            </div>
+                            <p className="text-sm font-medium text-slate-800 leading-relaxed">
+                              {clo.description || clo.content || clo.title}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 text-xs italic bg-slate-50 p-4 rounded-xl">Không có thông tin CLO</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : null}
+      </Drawer>
 
       {/* Unified Fixed Bottom Page Action Bar for EDIT mode */}
       {viewState === 'EDIT' && isEditMode && !editingProgram?.hasUncompletedCampaign && (

@@ -102,7 +102,7 @@ function UserManagementContent() {
     setIsEditModalOpen(true);
   };
 
-  const handleResetPassword = (id: string) => {
+  const handleResetPassword = (id: number | string) => {
     modal.confirm({
       title: 'Xác nhận cấp lại mật khẩu?',
       content: 'Mật khẩu của người dùng này sẽ được đặt lại về mặc định.',
@@ -114,7 +114,7 @@ function UserManagementContent() {
     });
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = (id: number | string) => {
     modal.confirm({
       title: 'Xác nhận xóa người dùng?',
       content: 'Hành động này không thể hoàn tác.',

@@ -92,14 +92,30 @@ const StateNode = ({ data }: any) => {
           <Tag color="blue" className="text-[10px] font-bold border-none m-0 rounded-md px-2 py-0">Form</Tag>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400 text-[10px] font-bold uppercase w-20">Thực hiện:</span>
-          <span className="text-[11px] text-blue-700 font-semibold truncate">{data.performerRole || '---'}</span>
+        <div className="flex items-start gap-2">
+          <span className="text-slate-400 text-[10px] font-bold uppercase w-20 mt-0.5">Thực hiện:</span>
+          <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+            {Array.isArray(data.performerRoles) && data.performerRoles.length > 0 ? (
+              data.performerRoles.map((r: string, idx: number) => (
+                <Tag key={idx} color="blue" className="m-0 text-[10px] font-semibold border-none rounded-md px-1.5 py-0">{r}</Tag>
+              ))
+            ) : (
+              <span className="text-[11px] text-blue-700 font-semibold truncate">{data.performerRole || '---'}</span>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400 text-[10px] font-bold uppercase w-20">Phê duyệt:</span>
-          <span className="text-[11px] text-emerald-700 font-semibold truncate">{data.approverRole || '---'}</span>
+        <div className="flex items-start gap-2">
+          <span className="text-slate-400 text-[10px] font-bold uppercase w-20 mt-0.5">Phê duyệt:</span>
+          <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+            {Array.isArray(data.approverRoles) && data.approverRoles.length > 0 ? (
+              data.approverRoles.map((r: string, idx: number) => (
+                <Tag key={idx} color="purple" className="m-0 text-[10px] font-semibold border-none rounded-md px-1.5 py-0">{r}</Tag>
+              ))
+            ) : (
+              <span className="text-[11px] text-emerald-700 font-semibold truncate">{data.approverRole || '---'}</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -243,13 +259,26 @@ function DesignerInner({
     if (selectedNodes.length > 0) {
       const node = selectedNodes[0];
       setSelectedElement({ type: 'node', ...node });
+      const prereqs = Array.isArray(node.data?.prerequisiteStepCodes) 
+        ? node.data.prerequisiteStepCodes 
+        : (node.data?.prerequisiteStepCode ? [node.data.prerequisiteStepCode] : []);
+      const perfRoles = Array.isArray(node.data?.performerRoles) && node.data.performerRoles.length > 0 
+        ? node.data.performerRoles 
+        : (node.data?.performerRole ? [node.data.performerRole] : []);
+      const appRoles = Array.isArray(node.data?.approverRoles) && node.data.approverRoles.length > 0 
+        ? node.data.approverRoles 
+        : (node.data?.approverRole ? [node.data.approverRole] : []);
+
       form.setFieldsValue({
         id: node.id,
         name: node.data.label,
         screenCode: node.data.screenCode,
-        performerRole: node.data.performerRole,
-        approverRole: node.data.approverRole,
-        prerequisiteStepCode: node.data.prerequisiteStepCode
+        performerRoles: perfRoles,
+        performerRole: perfRoles[0] || '',
+        approverRoles: appRoles,
+        approverRole: appRoles[0] || '',
+        prerequisiteStepCodes: prereqs,
+        prerequisiteStepCode: prereqs[0] || ''
       });
     } else if (selectedEdges.length > 0) {
       const edge = selectedEdges[0];
@@ -314,10 +343,33 @@ function DesignerInner({
     try {
       const values = await form.validateFields();
       if (selectedElement.type === 'node') {
+        const prereqs = Array.isArray(values.prerequisiteStepCodes) 
+          ? values.prerequisiteStepCodes 
+          : (values.prerequisiteStepCode ? [values.prerequisiteStepCode] : []);
+        const perfRoles = Array.isArray(values.performerRoles) 
+          ? values.performerRoles 
+          : (values.performerRole ? [values.performerRole] : []);
+        const appRoles = Array.isArray(values.approverRoles) 
+          ? values.approverRoles 
+          : (values.approverRole ? [values.approverRole] : []);
+
         setNodes((nds) =>
           nds.map((node) =>
             node.id === selectedElement.id
-              ? { ...node, data: { ...node.data, label: values.name, screenCode: values.screenCode, performerRole: values.performerRole, approverRole: values.approverRole, prerequisiteStepCode: values.prerequisiteStepCode } }
+              ? { 
+                  ...node, 
+                  data: { 
+                    ...node.data, 
+                    label: values.name, 
+                    screenCode: values.screenCode, 
+                    performerRoles: perfRoles,
+                    performerRole: perfRoles[0] || '', 
+                    approverRoles: appRoles,
+                    approverRole: appRoles[0] || '', 
+                    prerequisiteStepCodes: prereqs,
+                    prerequisiteStepCode: prereqs[0] || '' 
+                  } 
+                }
               : node
           )
         );
@@ -463,20 +515,20 @@ function DesignerInner({
                   </Form.Item>
                   <Form.Item 
                     label="Bước phụ thuộc (Bắt buộc hoàn thành trước)" 
-                    name="prerequisiteStepCode"
-                    tooltip="Màn hình này sẽ bị khóa cho tới khi bước phụ thuộc được đánh giá HOÀN THÀNH"
+                    name="prerequisiteStepCodes"
+                    tooltip="Màn hình này sẽ bị khóa cho tới khi tất cả bước phụ thuộc được đánh giá HOÀN THÀNH"
                   >
-                    <Select placeholder="Chọn bước phụ thuộc (nếu có)" allowClear className="rounded-lg">
+                    <Select mode="multiple" placeholder="Chọn các bước phụ thuộc (nếu có)" allowClear className="rounded-lg">
                       {SCREEN_CODES.map(s => <Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
                     </Select>
                   </Form.Item>
-                  <Form.Item label="Người thực hiện" name="performerRole">
-                    <Select placeholder="Chọn role người thực hiện" allowClear className="rounded-lg">
+                  <Form.Item label="Nhóm Thực hiện / Biên soạn" name="performerRoles">
+                    <Select mode="multiple" placeholder="Chọn vai trò thực hiện" allowClear className="rounded-lg">
                       {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
                     </Select>
                   </Form.Item>
-                  <Form.Item label="Người duyệt" name="approverRole">
-                    <Select placeholder="Chọn role người duyệt" allowClear className="rounded-lg">
+                  <Form.Item label="Nhóm Phê duyệt / Nghiệm thu" name="approverRoles">
+                    <Select mode="multiple" placeholder="Chọn vai trò duyệt" allowClear className="rounded-lg">
                       {roles.map(r => <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>)}
                     </Select>
                   </Form.Item>

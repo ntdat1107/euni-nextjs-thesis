@@ -1,7 +1,7 @@
 import { apiClient as api } from './api';
 
 export interface Faculty {
-  id: string;
+  id: number;
   name: string;
   code: string;
   description: string;
@@ -16,11 +16,11 @@ export const facultyService = {
     return api.post('/faculties', data);
   },
 
-  updateFaculty: async (id: string, data: Faculty): Promise<Faculty> => {
+  updateFaculty: async (id: number | string, data: Faculty): Promise<Faculty> => {
     return api.put(`/faculties/${id}`, data);
   },
 
-  deleteFaculty: async (id: string): Promise<void> => {
+  deleteFaculty: async (id: number | string): Promise<void> => {
     return api.delete(`/faculties/${id}`);
   }
 };

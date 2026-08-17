@@ -6,11 +6,11 @@ export interface WorkflowTemplateRequest {
   description?: string;
   status?: string;
   jsonContent: string;
-  draftId?: string;
+  draftId?: number | string;
 }
 
 export interface WorkflowTemplateResponse {
-  id: string;
+  id: number;
   code: string;
   name: string;
   description?: string;
@@ -24,8 +24,8 @@ export interface WorkflowTemplateResponse {
 }
 
 export interface WorkflowDraftResponse {
-  id: string;
-  templateId?: string;
+  id: number;
+  templateId?: number;
   code: string;
   name: string;
   description?: string;
@@ -39,7 +39,7 @@ const workflowService = {
     return api.get('/workflow-templates', { signal });
   },
 
-  getById: async (id: string, signal?: AbortSignal): Promise<WorkflowTemplateResponse> => {
+  getById: async (id: number | string, signal?: AbortSignal): Promise<WorkflowTemplateResponse> => {
     return api.get(`/workflow-templates/${id}`, { signal });
   },
 
@@ -68,15 +68,15 @@ const workflowService = {
     }
   },
   
-  updateStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<WorkflowTemplateResponse> => {
+  updateStatus: async (id: number | string, status: 'ACTIVE' | 'INACTIVE'): Promise<WorkflowTemplateResponse> => {
     return api.patch(`/workflow-templates/${id}/status`, { status });
   },
 
-  getHistory: async (id: string, signal?: AbortSignal): Promise<WorkflowTemplateResponse[]> => {
+  getHistory: async (id: number | string, signal?: AbortSignal): Promise<WorkflowTemplateResponse[]> => {
     return api.get(`/workflow-templates/${id}/history`, { signal });
   },
   
-  checkCode: async (code: string, currentId?: string | null): Promise<boolean> => {
+  checkCode: async (code: string, currentId?: number | string | null): Promise<boolean> => {
     return api.get('/workflow-templates/check-code', { params: { code, currentId } });
   }
 };

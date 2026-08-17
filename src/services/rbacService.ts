@@ -1,14 +1,14 @@
 import { apiClient as api } from './api';
 
 export interface Permission {
-  id: string;
+  id: number;
   name: string;
   code: string;
   description: string;
 }
 
 export interface Role {
-  id: string;
+  id: number;
   name: string;
   code: string;
   permissions: Permission[];
@@ -23,7 +23,7 @@ export const rbacService = {
     return api.post('/rbac/permissions', permission);
   },
 
-  deletePermission: async (id: string): Promise<void> => {
+  deletePermission: async (id: number | string): Promise<void> => {
     return api.delete(`/rbac/permissions/${id}`);
   },
 
@@ -35,11 +35,11 @@ export const rbacService = {
     return api.post('/rbac/roles', role);
   },
 
-  deleteRole: async (id: string): Promise<void> => {
+  deleteRole: async (id: number | string): Promise<void> => {
     return api.delete(`/rbac/roles/${id}`);
   },
 
-  updateRolePermissions: async (roleId: string, permissionIds: string[]): Promise<void> => {
+  updateRolePermissions: async (roleId: number | string, permissionIds: (number | string)[]): Promise<void> => {
     return api.put(`/rbac/roles/${roleId}/permissions`, { permissionIds });
   },
 };

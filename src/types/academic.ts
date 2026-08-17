@@ -3,11 +3,11 @@ import { Faculty } from '@/services/facultyService';
 export type ProgramStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 
 export interface Major {
-  id: string;
+  id: number;
   name: string;
   code: string;
   description?: string;
-  facultyId?: string;
+  facultyId?: number;
   facultyName?: string;
   programCount: number;
   createdAt: string;
@@ -15,11 +15,11 @@ export interface Major {
 }
 
 export interface Program {
-  id: string;
+  id: number;
   name: string;
   code: string;
   description?: string;
-  majorId: string;
+  majorId: number;
   majorName?: string;
   status: ProgramStatus;
   generalObjective?: string;
@@ -31,9 +31,8 @@ export interface Program {
   updatedAt: string;
 }
 
-
 export interface Course {
-  id: string;
+  id: number;
   name: string;
   code: string;
   credits: number;
@@ -43,9 +42,9 @@ export interface Course {
 }
 
 export interface ProgramCourse {
-  id: string;
-  programId: string;
-  courseId: string;
+  id: number;
+  programId: number;
+  courseId: number;
   semester?: number;
   isRequired?: boolean;
   required?: boolean;

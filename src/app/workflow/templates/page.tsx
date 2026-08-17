@@ -58,11 +58,11 @@ export default function WorkflowTemplatesListPage() {
     return () => controller.abort();
   }, [message]);
 
-  const handleStatusChange = async (id: string, checked: boolean) => {
+  const handleStatusChange = async (id: number | string, checked: boolean) => {
     try {
       const newStatus = checked ? 'ACTIVE' : 'INACTIVE';
       await workflowService.updateStatus(id, newStatus);
-      setData(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
+      setData(prev => prev.map(item => String(item.id) === String(id) ? { ...item, status: newStatus } : item));
       message.success(`Đã cập nhật trạng thái quy trình thành ${newStatus === 'ACTIVE' ? 'Hoạt động' : 'Tạm ngưng'}`);
     } catch (error) {
       message.error('Lỗi khi cập nhật trạng thái');

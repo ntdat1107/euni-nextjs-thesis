@@ -11,13 +11,15 @@ import {
   Tag, 
   Row, 
   Col, 
-  Switch 
+  Switch,
+  Tooltip
 } from 'antd';
 import { 
   Trash2, 
   ArrowUp, 
   ArrowDown, 
-  GripVertical 
+  GripVertical,
+  ShieldAlert
 } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -28,14 +30,17 @@ const { Text } = Typography;
 
 export interface WorkflowStep {
   tempId: string;
-  masterStepId: string | null;
+  masterStepId: number | string | null;
   name: string;
   code: string;
   screenCode: string;
-  executorRole: string;
-  approverRole: string;
+  executorRole?: string;
+  executorRoles?: string[];
+  approverRole?: string;
+  approverRoles?: string[];
   isRequired: boolean;
   orderNo: number;
+  isDataLevelAuth?: boolean;
   requiredDocuments?: string[];
   prerequisiteStepCode?: string;
   prerequisiteStepCodes?: string[];
@@ -49,7 +54,7 @@ interface SortableStepItemProps {
   stepDefinitions: WorkflowStepDefinitionResponse[];
   onRemove: (tempId: string) => void;
   onMove: (index: number, direction: 'up' | 'down') => void;
-  onSelectMaster: (tempId: string, masterId: string) => void;
+  onSelectMaster: (tempId: string, masterId: number | string) => void;
   onUpdateField: (tempId: string, field: keyof WorkflowStep, value: any) => void;
 }
 
@@ -80,10 +85,54 @@ export function SortableStepItem({
     opacity: isDragging ? 0.8 : 1,
   };
 
-  // Extract selected prerequisite codes (supporting single string or array)
+  // Find matching master step from stepDefinitions by ID, stepCode, or screenCode
+  const matchedMaster = React.useMemo(() => {
+    if (!stepDefinitions || stepDefinitions.length === 0) return null;
+    return stepDefinitions.find(
+      m => String(m.id) === String(step.masterStepId) || 
+           m.stepCode === step.masterStepId || 
+           m.stepCode === step.code || 
+           m.stepCode === step.screenCode
+    );
+  }, [stepDefinitions, step.masterStepId, step.code, step.screenCode]);
+
+  const selectedMasterValue = matchedMaster ? matchedMaster.id : (step.masterStepId || undefined);
+
+  // Extract selected prerequisite codes
   const currentPrereqs: string[] = Array.isArray(step.prerequisiteStepCodes) 
     ? step.prerequisiteStepCodes 
     : (step.prerequisiteStepCode ? [step.prerequisiteStepCode] : []);
+
+  // Normalize role values to match Antd Select.Option values (r.code)
+  const mapToRoleCode = (val: string): string => {
+    if (!val) return '';
+    const clean = val.trim();
+    const found = roles.find(r => r.code === clean || r.name === clean);
+    if (found) return found.code;
+    if (clean.includes('Giảng viên')) return 'LECTURER';
+    if (clean.includes('Trưởng Khoa')) return 'DEAN';
+    if (clean.includes('Bộ môn')) return 'HEAD_DEPT';
+    if (clean.includes('Tổ soạn thảo')) return 'COMMITTEE';
+    if (clean.includes('Thẩm định') || clean.includes('Hội đồng')) return 'COUNCIL';
+    if (clean.includes('ĐTĐH') || clean.includes('Đào tạo')) return 'DTDH';
+    if (clean.includes('ĐBCL') || clean.includes('Khảo thí')) return 'QA';
+    if (clean.includes('Quản trị') || clean.includes('Admin')) return 'ADMIN';
+    return clean;
+  };
+
+  const executorRoleValues: string[] = React.useMemo(() => {
+    const raw = Array.isArray(step.executorRoles) && step.executorRoles.length > 0 
+      ? step.executorRoles 
+      : (step.executorRole ? [step.executorRole] : []);
+    return Array.from(new Set(raw.map(mapToRoleCode).filter(Boolean)));
+  }, [step.executorRoles, step.executorRole, roles]);
+
+  const approverRoleValues: string[] = React.useMemo(() => {
+    const raw = Array.isArray(step.approverRoles) && step.approverRoles.length > 0 
+      ? step.approverRoles 
+      : (step.approverRole ? [step.approverRole] : []);
+    return Array.from(new Set(raw.map(mapToRoleCode).filter(Boolean)));
+  }, [step.approverRoles, step.approverRole, roles]);
 
   return (
     <div 
@@ -108,23 +157,20 @@ export function SortableStepItem({
             <Text strong className="text-sm truncate text-slate-800" title={step.name}>
               {step.name || 'Bước mới'}
             </Text>
-            {step.masterStepId && step.code && (
-              <Tag className="m-0 text-[11px] px-2 py-0.5 bg-blue-100 border-none text-blue-700 font-mono font-bold rounded-lg shrink-0">
-                {step.code}
-              </Tag>
-            )}
           </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-64">
+          <div className="w-72">
             <Select
               size="middle"
-              placeholder="Chọn bước mẫu..."
+              placeholder="Chọn bước mẫu từ Kho..."
               className="w-full text-xs"
-              value={step.masterStepId}
+              value={selectedMasterValue}
               onChange={(val) => onSelectMaster(step.tempId, val)}
               variant="filled"
+              optionFilterProp="children"
+              showSearch
             >
               {stepDefinitions.map(m => (
                 <Select.Option key={m.id} value={m.id}>
@@ -145,87 +191,124 @@ export function SortableStepItem({
       </div>
 
       {/* Fields Grid Row */}
-      <div className="p-4 space-y-3">
+      <div className="p-4 space-y-4">
+        {/* Row 1: Prerequisite Steps (Full Width span=24, auto wrap) */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+            Bước tiền đề (bắt buộc hoàn thành trước):
+          </span>
+          <Select 
+            mode="multiple"
+            size="middle" 
+            placeholder="Chọn 1 hoặc nhiều bước tiền đề..." 
+            className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
+            value={currentPrereqs} 
+            onChange={(val) => onUpdateField(step.tempId, 'prerequisiteStepCodes', val)}
+            allowClear
+            tagRender={(props) => {
+              const { value, closable, onClose } = props;
+              return (
+                <Tag
+                  closable={closable}
+                  onClose={onClose}
+                  style={{ marginRight: 4, marginTop: 2, marginBottom: 2 }}
+                  className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 inline-flex items-center gap-1"
+                >
+                  {value}
+                </Tag>
+              );
+            }}
+          >
+            {stepDefinitions.map(m => (
+              <Select.Option key={m.stepCode} value={m.stepCode}>
+                <span className="text-xs text-amber-700 font-mono font-bold mr-1.5">{m.stepCode}</span>
+                <span className="text-xs text-slate-700">{m.stepName}</span>
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Row 2: Executors (C & U) & Approvers (A) (Half width each: span=12) */}
         <Row gutter={[16, 12]}>
-          <Col span={10}>
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-slate-500">
-                Các bước bắt buộc trước (Tiền đề):
+          {/* Group 1: Executors (Create & Update - C & U) */}
+          <Col span={12}>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+                <Tag color="green" className="m-0 text-[10px] font-bold px-1.5 py-0 rounded">C & U</Tag>
+                Nhóm Thực hiện / Biên soạn:
               </span>
               <Select 
                 mode="multiple"
-                size="small" 
-                placeholder="Chọn 1 hoặc nhiều bước tiền đề..." 
-                className="w-full text-xs" 
-                value={currentPrereqs} 
-                onChange={(val) => onUpdateField(step.tempId, 'prerequisiteStepCodes', val)}
+                size="middle" 
+                placeholder="Chọn các vai trò thực hiện..." 
+                className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
+                value={executorRoleValues} 
+                onChange={(val) => {
+                  onUpdateField(step.tempId, 'executorRoles', val);
+                  onUpdateField(step.tempId, 'executorRole', val[0] || '');
+                }}
                 allowClear
                 tagRender={(props) => {
-                  const { value, closable, onClose } = props;
-                  const onPreventMouseDown = (e: React.MouseEvent<HTMLSpanElement>) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  };
+                  const rObj = roles.find(r => r.code === props.value || r.name === props.value);
                   return (
                     <Tag
-                      onMouseDown={onPreventMouseDown}
-                      closable={closable}
-                      onClose={onClose}
-                      style={{ marginRight: 3, marginTop: 2, marginBottom: 2 }}
-                      className="text-[11px] font-mono font-bold px-1.5 py-0 rounded bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-1 inline-flex"
+                      closable={props.closable}
+                      onClose={props.onClose}
+                      style={{ marginRight: 4, marginTop: 2, marginBottom: 2 }}
+                      className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border-emerald-200"
                     >
-                      {value}
+                      {rObj ? rObj.name : props.value}
                     </Tag>
                   );
                 }}
               >
-                {stepDefinitions.map(m => (
-                  <Select.Option key={m.stepCode} value={m.stepCode}>
-                    <span className="text-xs text-amber-700 font-bold">{m.stepCode}</span> - {m.stepName}
+                {roles.map(r => (
+                  <Select.Option key={r.code} value={r.code}>
+                    <span className="text-xs font-medium">{r.name}</span>
+                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code})</span>
                   </Select.Option>
                 ))}
               </Select>
             </div>
           </Col>
 
-          <Col span={7}>
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-slate-500">
-                Người thực hiện:
+          {/* Group 2: Approvers (Approve - A) */}
+          <Col span={12}>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+                <Tag color="purple" className="m-0 text-[10px] font-bold px-1.5 py-0 rounded">A</Tag>
+                Nhóm Phê duyệt / Nghiệm thu:
               </span>
               <Select 
-                size="small" 
-                placeholder="Chọn vai trò thực hiện..." 
-                className="w-full text-xs" 
-                value={step.executorRole || undefined} 
-                onChange={(val) => onUpdateField(step.tempId, 'executorRole', val)}
+                mode="multiple"
+                size="middle" 
+                placeholder="Chọn các vai trò duyệt..." 
+                className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
+                value={approverRoleValues} 
+                onChange={(val) => {
+                  onUpdateField(step.tempId, 'approverRoles', val);
+                  onUpdateField(step.tempId, 'approverRole', val[0] || '');
+                }}
                 allowClear
+                tagRender={(props) => {
+                  const rObj = roles.find(r => r.code === props.value || r.name === props.value);
+                  return (
+                    <Tag
+                      closable={props.closable}
+                      onClose={props.onClose}
+                      style={{ marginRight: 4, marginTop: 2, marginBottom: 2 }}
+                      className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border-purple-200"
+                    >
+                      {rObj ? rObj.name : props.value}
+                    </Tag>
+                  );
+                }}
               >
                 {roles.map(r => (
                   <Select.Option key={r.code} value={r.code}>
-                    <span className="text-xs">{r.name}</span>
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-          </Col>
-
-          <Col span={7}>
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-slate-500">
-                Người duyệt:
-              </span>
-              <Select 
-                size="small" 
-                placeholder="Chọn vai trò duyệt..." 
-                className="w-full text-xs" 
-                value={step.approverRole || undefined} 
-                onChange={(val) => onUpdateField(step.tempId, 'approverRole', val)}
-                allowClear
-              >
-                {roles.map(r => (
-                  <Select.Option key={r.code} value={r.code}>
-                    <span className="text-xs">{r.name}</span>
+                    <span className="text-xs font-medium">{r.name}</span>
+                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code})</span>
                   </Select.Option>
                 ))}
               </Select>
@@ -233,10 +316,19 @@ export function SortableStepItem({
           </Col>
         </Row>
 
-        {/* Required Documents Section: ONLY render if masterStepId is selected AND requiredDocuments exists and has items */}
-        {step.masterStepId && step.requiredDocuments && step.requiredDocuments.length > 0 && (
+        {/* Note */}
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 italic">
+              * Mặc định tất cả người dùng hệ thống đều có quyền <strong>Xem (View - V)</strong>.
+            </span>
+          </div>
+        </div>
+
+        {/* Required Documents Section */}
+        {step.requiredDocuments && step.requiredDocuments.length > 0 && (
           <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Hồ sơ công việc (Yêu cầu):</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Hồ sơ công việc yêu cầu:</span>
             <div className="flex flex-wrap gap-1.5">
               {step.requiredDocuments.map((doc, i) => (
                 <Tag key={i} className="m-0 text-[11px] bg-slate-100 border-slate-200 text-slate-600 rounded-md">
@@ -250,3 +342,4 @@ export function SortableStepItem({
     </div>
   );
 }
+
