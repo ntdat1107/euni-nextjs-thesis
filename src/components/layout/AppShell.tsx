@@ -8,6 +8,8 @@ import { Alert, Button, App } from 'antd';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import MainLoading from '../ui/MainLoading';
+import { ShieldAlert } from 'lucide-react';
+import { isPathAllowed } from '@/lib/permissions';
 
 // Separated component to use useSearchParams within Suspense
 function SearchParamsHandler({ 
@@ -107,6 +109,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, pathname, router]);
 
+  // Route permission check for direct link access
+  const userRoles = React.useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('euni_user') || '{}');
+      return currentUser?.roles || [];
+    } catch (e) {
+      return [];
+    }
+  }, [isAuthenticated]);
+
+  const hasPagePermission = React.useMemo(() => {
+    if (!isAuthenticated) return true;
+    return isPathAllowed(pathname, userRoles);
+  }, [isAuthenticated, pathname, userRoles]);
+
+  useEffect(() => {
+    if (isAuthenticated && !hasPagePermission) {
+      const timer = setTimeout(() => {
+        router.push('/');
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, hasPagePermission, router]);
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Instant Progress Bar */}
@@ -124,7 +151,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={cn(
-          'flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300',
+          'flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 max-w-full overflow-x-hidden',
           sidebarCollapsed ? 'ml-[80px]' : 'ml-[220px]'
         )}
       >
@@ -136,11 +163,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Topbar />
         </header>
 
-        <main className="pl-4 pr-0 py-6 pb-12 flex-1 min-w-0 relative">
+        <main className="px-4 py-6 pb-12 flex-1 min-w-0 relative w-full max-w-full">
           <MainLoading />
-          <div className="w-full h-full pr-0">
+          <div className="w-full h-full">
             {isAuthenticated === true ? (
-              children
+              hasPagePermission ? (
+                children
+              ) : (
+                <div className="h-[65vh] w-full flex items-center justify-center p-6">
+                  <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-slate-200 shadow-xl text-center flex flex-col items-center">
+                    <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4">
+                      <ShieldAlert className="w-8 h-8 text-rose-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-900 mb-2">403 - Truy Cập Bị Từ Chối</h2>
+                    <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                      Tài khoản của bạn không có quyền xem hoặc thao tác trên đường dẫn này. Hệ thống sẽ tự động chuyển bạn về Bảng điều khiển.
+                    </p>
+                    <Button type="primary" onClick={() => router.push('/')} className="rounded-xl h-10 px-6 font-semibold">
+                      Trở về Bảng điều khiển ngay
+                    </Button>
+                  </div>
+                </div>
+              )
             ) : (
               <div className="h-[60vh] w-full flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">

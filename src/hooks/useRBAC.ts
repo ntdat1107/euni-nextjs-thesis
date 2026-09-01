@@ -28,6 +28,15 @@ export function useRBAC() {
     },
   });
 
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number | string; data: Partial<Role> }) => rbacService.updateRole(id, data),
+    onSuccess: () => {
+      roleCache.clearCache();
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      message.success('Cập nhật vai trò thành công');
+    },
+  });
+
   const deleteRoleMutation = useMutation({
     mutationFn: (id: number | string) => rbacService.deleteRole(id),
     onSuccess: () => {
@@ -68,6 +77,7 @@ export function useRBAC() {
     roles,
     isLoading: loadingRoles || loadingPermissions,
     addRole: (role: Partial<Role>) => createRoleMutation.mutate(role),
+    updateRole: (id: number | string, data: Partial<Role>) => updateRoleMutation.mutate({ id, data }),
     deleteRole: (id: number | string) => deleteRoleMutation.mutate(id),
     addPermission: (permission: Partial<Permission>) => createPermissionMutation.mutate(permission),
     deletePermission: (id: number | string) => deletePermissionMutation.mutate(id),

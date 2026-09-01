@@ -72,25 +72,32 @@ apiClient.interceptors.response.use(
     }
 
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const responseData = error.response?.data as any;
 
     if (isLogoutInProgress) {
       return Promise.reject(error);
     }
 
-    // Handle 401 Unauthorized (Expired token or Invalid token)
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+    // Check if error is related to Token Expiration / Unauthorized
+    const isUnauthorized = 
+      error.response?.status === 401 || 
+      responseData?.code === 'UNAUTHORIZED' || 
+      responseData?.code === 'TOKEN_EXPIRED';
 
-      // If it's the refresh token endpoint itself that failed, logout
+    if (isUnauthorized && typeof window !== 'undefined') {
+      // If it's the refresh token endpoint itself that failed, logout immediately
       if (originalRequest.url?.includes('/auth/refresh-token')) {
         handleLogout();
         return Promise.reject(error);
       }
 
+      // If this request already retried once and failed again, logout
       if (originalRequest._retry) {
         handleLogout();
         return Promise.reject(error);
       }
 
+      // If refresh token request is already in-flight, queue this request
       if (isRefreshing) {
         return new Promise((resolve) => {
           subscribeTokenRefresh((token: string) => {
@@ -112,25 +119,32 @@ apiClient.interceptors.response.use(
           return Promise.reject(error);
         }
 
-        // Fix: Use API_BASE_URL which already includes /api, or just /auth/refresh-token
-        // AuthController is at /api/auth/refresh-token
+        // Call backend refresh token API
         const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
+        const resData = res.data;
 
-        const responseData = res.data;
-        if (responseData && responseData.success) {
-          const { accessToken, refreshToken: newRefreshToken, tokenVersion } = responseData.data;
+        if (resData && (resData.success || resData.accessToken)) {
+          const dataPayload = resData.data || resData;
+          const { accessToken, refreshToken: newRefreshToken, tokenVersion } = dataPayload;
+
+          if (!accessToken) {
+            handleLogout();
+            return Promise.reject(error);
+          }
 
           localStorage.setItem('euni_access_token', accessToken);
           if (newRefreshToken) {
             localStorage.setItem('euni_refresh_token', newRefreshToken);
           }
 
-          // Update tokenVersion in user object to avoid mismatch
+          // Sync tokenVersion in euni_user if available
           const userStr = localStorage.getItem('euni_user');
           if (userStr && tokenVersion !== undefined) {
-            const user = JSON.parse(userStr);
-            user.tokenVersion = tokenVersion;
-            localStorage.setItem('euni_user', JSON.stringify(user));
+            try {
+              const user = JSON.parse(userStr);
+              user.tokenVersion = tokenVersion;
+              localStorage.setItem('euni_user', JSON.stringify(user));
+            } catch (e) {}
           }
 
           if (originalRequest.headers) {
@@ -151,28 +165,21 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Handle 403 Forbidden (Logged in but no permission)
-    if (error.response?.status === 403) {
+    // Handle 403 Forbidden (Permission Denied)
+    if (error.response?.status === 403 || responseData?.code === 'FORBIDDEN') {
       if (typeof window !== 'undefined') {
-        const data = error.response.data as any;
-        const msg = data?.message || 'Bạn không có quyền thực hiện hành động này.';
+        const msg = responseData?.message || 'Bạn không có quyền thực hiện hành động này.';
 
         Modal.error({
-          title: 'Truy cập bị từ chối',
+          title: 'Truy cập bị từ chối (403)',
           content: msg,
           okText: 'Về trang chủ',
           onOk: () => {
-            window.location.href = '/';
-          }
-        });
-
-        if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
-          setTimeout(() => {
-            if (window.location.pathname !== '/' && !window.location.pathname.includes('/login')) {
+            if (window.location.pathname !== '/') {
               window.location.href = '/';
             }
-          }, 5000);
-        }
+          }
+        });
       }
     }
 

@@ -24,8 +24,8 @@ export interface ActionBarProps {
 
 /**
  * Enterprise Floating Bottom Action Bar component
- * Cố định sát góc dưới bên phải màn hình (fixed bottom-3 right-4).
- * Kích thước vừa vặn cân bằng ở giữa 2 mức (h-[28px], px-2.5, text-[11.5px]).
+ * Cố định sát mép dưới bên phải màn hình (fixed bottom-[10px] right-6).
+ * Kích thước 90% so với trước (h-[25px], px-2, text-[10.5px]).
  */
 export default function ActionBar({
   actions,
@@ -35,8 +35,8 @@ export default function ActionBar({
   if (!actions && !children) return null;
 
   return (
-    <div className="fixed bottom-3 right-4 z-50 pointer-events-none transition-all duration-200">
-      <div className={cn("flex items-center gap-2 pointer-events-auto", className)}>
+    <div className="fixed bottom-[10px] right-6 z-50 pointer-events-none transition-all duration-200">
+      <div className={cn("flex items-center gap-1.5 pointer-events-auto", className)}>
         {actions && actions.length > 0 ? (
           actions.map((act, index) => (
             <Button
@@ -48,7 +48,7 @@ export default function ActionBar({
               icon={act.icon}
               onClick={act.onClick}
               className={cn(
-                "rounded-md h-[28px] px-2.5 text-[11.5px] font-medium shadow-none transition-all duration-200 flex items-center gap-1.5",
+                "rounded-md h-[25px] px-2 text-[10.5px] font-medium shadow-none transition-all duration-200 flex items-center gap-1",
                 act.type === 'primary' && !act.danger && "bg-blue-700 hover:bg-blue-800 border-none text-white",
                 act.type === 'default' && "border-slate-300 text-slate-700 hover:text-blue-700 hover:border-blue-500 bg-white",
                 act.className

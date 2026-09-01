@@ -48,6 +48,7 @@ export interface WorkflowStep {
 
 interface SortableStepItemProps {
   step: WorkflowStep;
+  allSteps?: WorkflowStep[];
   index: number;
   totalSteps: number;
   roles: Role[];
@@ -56,10 +57,12 @@ interface SortableStepItemProps {
   onMove: (index: number, direction: 'up' | 'down') => void;
   onSelectMaster: (tempId: string, masterId: number | string) => void;
   onUpdateField: (tempId: string, field: keyof WorkflowStep, value: any) => void;
+  onUpdateFields?: (tempId: string, fields: Partial<WorkflowStep>) => void;
 }
 
 export function SortableStepItem({ 
   step, 
+  allSteps,
   index, 
   totalSteps, 
   roles, 
@@ -67,7 +70,8 @@ export function SortableStepItem({
   onRemove, 
   onMove, 
   onSelectMaster, 
-  onUpdateField 
+  onUpdateField,
+  onUpdateFields
 }: SortableStepItemProps) {
   const {
     attributes,
@@ -106,9 +110,14 @@ export function SortableStepItem({
   // Normalize role values to match Antd Select.Option values (r.code)
   const mapToRoleCode = (val: string): string => {
     if (!val) return '';
-    const clean = val.trim();
-    const found = roles.find(r => r.code === clean || r.name === clean);
-    if (found) return found.code;
+    const clean = val.trim().replace(/^ROLE_/, '');
+    const found = roles.find(r => 
+      r.code === clean || 
+      r.code.replace(/^ROLE_/, '') === clean || 
+      r.name === clean || 
+      r.name === val
+    );
+    if (found) return found.code.replace(/^ROLE_/, '');
     if (clean.includes('Giảng viên')) return 'LECTURER';
     if (clean.includes('Trưởng Khoa')) return 'DEAN';
     if (clean.includes('Bộ môn')) return 'HEAD_DEPT';
@@ -133,6 +142,26 @@ export function SortableStepItem({
       : (step.approverRole ? [step.approverRole] : []);
     return Array.from(new Set(raw.map(mapToRoleCode).filter(Boolean)));
   }, [step.approverRoles, step.approverRole, roles]);
+
+  // Filter prerequisite step options to only include other steps in the current template
+  const availablePrereqOptions = React.useMemo(() => {
+    const stepList = allSteps && allSteps.length > 0 ? allSteps : [];
+    return stepList.filter(s => s.tempId !== step.tempId && (s.code || s.screenCode || s.name));
+  }, [allSteps, step.tempId]);
+
+  // Set of master step identifiers (id or stepCode) already selected in other steps of this template
+  const usedMasterStepIdentifiers = React.useMemo(() => {
+    const set = new Set<string>();
+    const stepList = allSteps && allSteps.length > 0 ? allSteps : [];
+    stepList.forEach(s => {
+      if (s.tempId !== step.tempId) {
+        if (s.masterStepId) set.add(String(s.masterStepId));
+        if (s.code) set.add(String(s.code));
+        if (s.screenCode) set.add(String(s.screenCode));
+      }
+    });
+    return set;
+  }, [allSteps, step.tempId]);
 
   return (
     <div 
@@ -172,11 +201,21 @@ export function SortableStepItem({
               optionFilterProp="children"
               showSearch
             >
-              {stepDefinitions.map(m => (
-                <Select.Option key={m.id} value={m.id}>
-                  <span className="text-xs font-medium">{m.stepCode} - {m.stepName}</span>
-                </Select.Option>
-              ))}
+              {stepDefinitions.map(m => {
+                const isUsed = usedMasterStepIdentifiers.has(String(m.id)) || 
+                               usedMasterStepIdentifiers.has(String(m.stepCode));
+                return (
+                  <Select.Option 
+                    key={m.id} 
+                    value={m.id}
+                    disabled={isUsed}
+                  >
+                    <span className={`text-xs ${isUsed ? 'text-slate-400 line-through' : 'font-medium text-slate-700'}`}>
+                      {m.stepCode} - {m.stepName} {isUsed ? '(Đã chọn)' : ''}
+                    </span>
+                  </Select.Option>
+                );
+              })}
             </Select>
           </div>
           <Button 
@@ -201,10 +240,19 @@ export function SortableStepItem({
           <Select 
             mode="multiple"
             size="middle" 
-            placeholder="Chọn 1 hoặc nhiều bước tiền đề..." 
+            placeholder="Chọn 1 hoặc nhiều bước tiền đề trong quy trình..." 
             className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
             value={currentPrereqs} 
-            onChange={(val) => onUpdateField(step.tempId, 'prerequisiteStepCodes', val)}
+            onChange={(val) => {
+              if (onUpdateFields) {
+                onUpdateFields(step.tempId, {
+                  prerequisiteStepCodes: val,
+                  prerequisiteStepCode: val[0] || ''
+                });
+              } else {
+                onUpdateField(step.tempId, 'prerequisiteStepCodes', val);
+              }
+            }}
             allowClear
             tagRender={(props) => {
               const { value, closable, onClose } = props;
@@ -220,12 +268,15 @@ export function SortableStepItem({
               );
             }}
           >
-            {stepDefinitions.map(m => (
-              <Select.Option key={m.stepCode} value={m.stepCode}>
-                <span className="text-xs text-amber-700 font-mono font-bold mr-1.5">{m.stepCode}</span>
-                <span className="text-xs text-slate-700">{m.stepName}</span>
-              </Select.Option>
-            ))}
+            {availablePrereqOptions.map(otherStep => {
+              const stepVal = otherStep.code || otherStep.screenCode || otherStep.tempId;
+              return (
+                <Select.Option key={otherStep.tempId} value={stepVal}>
+                  <span className="text-xs text-amber-700 font-mono font-bold mr-1.5">{stepVal}</span>
+                  <span className="text-xs text-slate-700">{otherStep.name}</span>
+                </Select.Option>
+              );
+            })}
           </Select>
         </div>
 
@@ -245,12 +296,19 @@ export function SortableStepItem({
                 className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
                 value={executorRoleValues} 
                 onChange={(val) => {
-                  onUpdateField(step.tempId, 'executorRoles', val);
-                  onUpdateField(step.tempId, 'executorRole', val[0] || '');
+                  if (onUpdateFields) {
+                    onUpdateFields(step.tempId, {
+                      executorRoles: val,
+                      executorRole: val[0] || ''
+                    });
+                  } else {
+                    onUpdateField(step.tempId, 'executorRoles', val);
+                  }
                 }}
                 allowClear
                 tagRender={(props) => {
-                  const rObj = roles.find(r => r.code === props.value || r.name === props.value);
+                  const valClean = (props.value || '').replace(/^ROLE_/, '');
+                  const rObj = roles.find(r => r.code === valClean || r.code.replace(/^ROLE_/, '') === valClean || r.name === props.value);
                   return (
                     <Tag
                       closable={props.closable}
@@ -264,9 +322,9 @@ export function SortableStepItem({
                 }}
               >
                 {roles.map(r => (
-                  <Select.Option key={r.code} value={r.code}>
+                  <Select.Option key={r.code} value={r.code.replace(/^ROLE_/, '')}>
                     <span className="text-xs font-medium">{r.name}</span>
-                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code})</span>
+                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code.replace(/^ROLE_/, '')})</span>
                   </Select.Option>
                 ))}
               </Select>
@@ -287,12 +345,19 @@ export function SortableStepItem({
                 className="w-full text-xs [&_.ant-select-selector]:!h-auto [&_.ant-select-selector]:!py-1" 
                 value={approverRoleValues} 
                 onChange={(val) => {
-                  onUpdateField(step.tempId, 'approverRoles', val);
-                  onUpdateField(step.tempId, 'approverRole', val[0] || '');
+                  if (onUpdateFields) {
+                    onUpdateFields(step.tempId, {
+                      approverRoles: val,
+                      approverRole: val[0] || ''
+                    });
+                  } else {
+                    onUpdateField(step.tempId, 'approverRoles', val);
+                  }
                 }}
                 allowClear
                 tagRender={(props) => {
-                  const rObj = roles.find(r => r.code === props.value || r.name === props.value);
+                  const valClean = (props.value || '').replace(/^ROLE_/, '');
+                  const rObj = roles.find(r => r.code === valClean || r.code.replace(/^ROLE_/, '') === valClean || r.name === props.value);
                   return (
                     <Tag
                       closable={props.closable}
@@ -306,9 +371,9 @@ export function SortableStepItem({
                 }}
               >
                 {roles.map(r => (
-                  <Select.Option key={r.code} value={r.code}>
+                  <Select.Option key={r.code} value={r.code.replace(/^ROLE_/, '')}>
                     <span className="text-xs font-medium">{r.name}</span>
-                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code})</span>
+                    <span className="text-[10px] text-slate-400 ml-1 font-mono">({r.code.replace(/^ROLE_/, '')})</span>
                   </Select.Option>
                 ))}
               </Select>

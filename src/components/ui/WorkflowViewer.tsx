@@ -65,11 +65,19 @@ function ViewerInner({ json = DEFAULT_FLOW }: { json?: string }) {
     }
   }, [json]);
 
+  const edges = useMemo(() => {
+    return (flow.edges || []).map((e: any) => ({
+      ...e,
+      type: e.type || 'smoothstep',
+      pathOptions: e.pathOptions || { borderRadius: 16 }
+    }));
+  }, [flow.edges]);
+
   return (
     <div className="w-full h-full bg-slate-50 relative rounded-xl overflow-hidden border border-slate-200">
       <ReactFlow
         nodes={flow.nodes}
-        edges={flow.edges}
+        edges={edges}
         nodeTypes={nodeTypes}
         fitView
         nodesDraggable={false}

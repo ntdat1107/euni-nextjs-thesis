@@ -32,6 +32,7 @@ export interface SurveyCampaignStepResponse {
 
 export interface SurveyCampaignCourseMeta {
   id: number;
+  stepId?: number;
   courseId: number;
   courseCode: string;
   courseName: string;
@@ -42,6 +43,7 @@ export interface SurveyCampaignCourseMeta {
 export interface SurveyCampaignCourseDetail {
   id: number;
   campaignId: number;
+  stepId?: number;
   courseId: number;
   courseCode: string;
   courseName: string;
@@ -81,14 +83,18 @@ export const surveyCampaignService = {
     return api.get(`/survey/campaigns/${id}`, { signal });
   },
 
-  getCourseDetail: async (campaignId: number | string, courseId: number | string): Promise<SurveyCampaignCourseDetail> => {
-    return api.get(`/survey/campaigns/${campaignId}/courses/${courseId}`);
+  getCourseDetail: async (campaignId: number | string, courseId: number | string, stepId?: number | string): Promise<SurveyCampaignCourseDetail> => {
+    const url = stepId 
+      ? `/survey/campaigns/${campaignId}/courses/${courseId}?stepId=${stepId}`
+      : `/survey/campaigns/${campaignId}/courses/${courseId}`;
+    return api.get(url);
   },
 
-  saveCourseDetail: async (campaignId: number | string, courseId: number | string, syllabusData: any, status?: string): Promise<SurveyCampaignCourseDetail> => {
+  saveCourseDetail: async (campaignId: number | string, courseId: number | string, syllabusData: any, status?: string, stepId?: number | string): Promise<SurveyCampaignCourseDetail> => {
     return api.post(`/survey/campaigns/${campaignId}/courses/${courseId}/save`, { 
       syllabusData: typeof syllabusData === 'string' ? syllabusData : JSON.stringify(syllabusData),
-      status: status || 'COMPLETED'
+      status: status || 'COMPLETED',
+      stepId: stepId
     });
   },
 

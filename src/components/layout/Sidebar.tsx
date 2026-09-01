@@ -43,27 +43,6 @@ const NAV_ITEMS: NavItemProps[] = [
     roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
   },
   {
-    id: 'projects',
-    label: 'Dự án mở/sửa ngành',
-    icon: FolderKanban,
-    path: '/curriculum/projects',
-    roles: ['DTDH', 'DEAN', 'COMMITTEE', 'QA'],
-  },
-  {
-    id: 'workspace',
-    label: 'Workspace 9 bước',
-    icon: Briefcase,
-    path: '/curriculum/workspace',
-    roles: ['DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
-  },
-  {
-    id: 'appraisal',
-    label: 'Hội đồng thẩm định',
-    icon: Award,
-    path: '/curriculum/appraisal',
-    roles: ['DTDH', 'DEAN', 'COUNCIL'],
-  },
-  {
     id: 'workflow',
     label: 'Quy trình',
     icon: GitBranch,
@@ -188,15 +167,34 @@ export default function Sidebar({
   const userRoles: string[] = React.useMemo(() => {
     if (!currentUser || !currentUser.roles) return ['ADMIN']; // Default fallback for dev/admin
     if (Array.isArray(currentUser.roles)) {
-      return currentUser.roles.map((r: any) => (typeof r === 'string' ? r : r.code));
+      return currentUser.roles.map((r: any) => {
+        const raw = typeof r === 'string' ? r : (r?.code || r?.name || '');
+        return raw ? raw.replace(/^ROLE_/, '').toUpperCase() : '';
+      }).filter(Boolean);
     }
     return [];
   }, [currentUser]);
 
   const filterItemByRole = React.useCallback((item: NavItemProps): boolean => {
+    if (!isClient) return true;
+    if (userRoles.includes('ADMIN')) return true;
+
+    if (typeof window !== 'undefined') {
+      const savedPermsStr = localStorage.getItem('euni_sidebar_page_permissions');
+      if (savedPermsStr && item.id) {
+        try {
+          const savedPerms = JSON.parse(savedPermsStr);
+          const itemPerms = savedPerms[item.id];
+          if (itemPerms) {
+            return userRoles.some(role => itemPerms[role]?.view);
+          }
+        } catch (e) {}
+      }
+    }
+
     if (!item.roles || item.roles.length === 0) return true;
-    return item.roles.some((role) => userRoles.includes(role));
-  }, [userRoles]);
+    return item.roles.some((role) => userRoles.includes(role.toUpperCase()));
+  }, [userRoles, isClient]);
 
   const visibleNavItems = React.useMemo(() => {
     return NAV_ITEMS.filter(filterItemByRole).map((item) => {

@@ -289,7 +289,7 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
     if (!campaignId || !selectedCourseId) return;
     const fetchDetail = async () => {
       try {
-        const detail = await surveyCampaignService.getCourseDetail(campaignId, selectedCourseId);
+        const detail = await surveyCampaignService.getCourseDetail(campaignId, selectedCourseId, step?.id);
         if (detail?.syllabusData) {
           const parsed = typeof detail.syllabusData === 'string'
             ? JSON.parse(detail.syllabusData)

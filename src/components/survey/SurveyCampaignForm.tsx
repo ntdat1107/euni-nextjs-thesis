@@ -160,47 +160,62 @@ export default function SurveyCampaignForm() {
           const nodes = parsed.nodes || [];
           const edges = parsed.edges || [];
 
-          const startNode = nodes.find((n: any) => n.type === 'start');
-          if (startNode) {
-            const steps: any[] = [];
-            let currentNodeId = startNode.id;
-            const visited = new Set<string>();
+          if (Array.isArray(parsed.steps) && parsed.steps.length > 0) {
+            const steps: any[] = parsed.steps.map((s: any) => {
+              const prereqs = Array.isArray(s.prerequisiteStepCodes) 
+                ? s.prerequisiteStepCodes 
+                : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : []);
+              const execRoles = Array.isArray(s.executorRoles) && s.executorRoles.length > 0 
+                ? s.executorRoles 
+                : (s.executorRole ? [s.executorRole] : []);
+              const appRoles = Array.isArray(s.approverRoles) && s.approverRoles.length > 0 
+                ? s.approverRoles 
+                : (s.approverRole ? [s.approverRole] : []);
+              const definition = stepDefinitions.find(d => d.stepCode === s.screenCode || d.stepCode === s.code);
 
-            while (currentNodeId && !visited.has(currentNodeId)) {
-              visited.add(currentNodeId);
+              return {
+                title: s.name || s.code,
+                description: '',
+                configuration: {
+                  taskId: s.tempId,
+                  performerRole: execRoles[0] || '',
+                  performerRoles: execRoles,
+                  approverRole: appRoles[0] || '',
+                  approverRoles: appRoles,
+                  screenCode: s.screenCode || s.code || '',
+                  prerequisiteStepCodes: prereqs,
+                  prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
+                },
+                deadline: null,
+                requiredDocuments: s.requiredDocuments || (definition ? definition.requiredDocuments : [])
+              };
+            });
+            setWorkflowSteps(steps);
+          } else {
+            const stateNodes = nodes.filter((n: any) => n.type === 'state');
+            const steps: any[] = stateNodes.map((taskNode: any) => {
+              const stepCode = taskNode.data.screenCode;
+              const definition = stepDefinitions.find(d => d.stepCode === stepCode);
 
-              const outgoingEdge = edges.find((e: any) => e.source === currentNodeId);
-              if (!outgoingEdge) break;
+              const prereqs = Array.isArray(taskNode.data?.prerequisiteStepCodes) 
+                ? taskNode.data.prerequisiteStepCodes 
+                : (taskNode.data?.prerequisiteStepCode ? [taskNode.data.prerequisiteStepCode] : []);
 
-              const targetId = outgoingEdge.target;
-              const taskNode = nodes.find((n: any) => n.id === targetId && n.type === 'state');
-
-              if (taskNode) {
-                const stepCode = taskNode.data.screenCode;
-                const definition = stepDefinitions.find(d => d.stepCode === stepCode);
-
-                const prereqs = Array.isArray(taskNode.data?.prerequisiteStepCodes) 
-                  ? taskNode.data.prerequisiteStepCodes 
-                  : (taskNode.data?.prerequisiteStepCode ? [taskNode.data.prerequisiteStepCode] : []);
-
-                steps.push({
-                  title: taskNode.data.label || taskNode.id,
-                  description: '',
-                  configuration: {
-                    taskId: taskNode.id,
-                    performerRole: taskNode.data.performerRole || '',
-                    approverRole: taskNode.data.approverRole || '',
-                    screenCode: stepCode || '',
-                    prerequisiteStepCodes: prereqs,
-                    prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
-                  },
-                  deadline: null,
-                  requiredDocuments: taskNode.data.requiredDocuments || (definition ? definition.requiredDocuments : [])
-                });
-              }
-
-              currentNodeId = targetId;
-            }
+              return {
+                title: taskNode.data.label || taskNode.id,
+                description: '',
+                configuration: {
+                  taskId: taskNode.id,
+                  performerRole: taskNode.data.performerRole || '',
+                  approverRole: taskNode.data.approverRole || '',
+                  screenCode: stepCode || '',
+                  prerequisiteStepCodes: prereqs,
+                  prerequisiteStepCode: prereqs.length > 0 ? prereqs[0] : ''
+                },
+                deadline: null,
+                requiredDocuments: taskNode.data.requiredDocuments || (definition ? definition.requiredDocuments : [])
+              };
+            });
             setWorkflowSteps(steps);
           }
         } catch (error) {
@@ -446,29 +461,29 @@ export default function SurveyCampaignForm() {
                     {step.configuration?.screenCode === 'S5_CLO' && isS5Expanded && (
                       <tr key={`sub-s5-${step.id || idx}`}>
                         <td colSpan={7} className="p-0 border-b border-slate-200">
-                          <div className="bg-blue-50/20 border-l-4 border-l-blue-500 p-5 space-y-4 border-t border-blue-100/80">
-                            <div className="flex items-center justify-between gap-4 pb-3 border-b border-blue-100 flex-wrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-blue-100/70 flex items-center justify-center text-blue-600 font-bold shadow-2xs">
-                                  <BookOpen size={20} />
+                          <div className="bg-slate-50/70 border-l-2 border-l-blue-500 p-3.5 space-y-3 border-t border-slate-200/60">
+                            <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-200/60 flex-wrap">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-blue-100/80 flex items-center justify-center text-blue-600 font-bold">
+                                  <BookOpen size={15} />
                                 </div>
                                 <div>
-                                  <div className="font-bold text-slate-800 text-base flex items-center gap-2.5">
+                                  <div className="font-bold text-slate-700 text-xs flex items-center gap-2">
                                     <span>Danh sách Môn học thuộc CTĐT</span>
-                                    <Tag color="blue" className="rounded-full font-bold text-xs px-3 py-0.5 border-none">
+                                    <Tag color="blue" className="rounded-full font-bold text-[10px] px-2 py-0 border-none">
                                       {programCourses.length} môn học
                                     </Tag>
                                   </div>
-                                  <div className="text-xs text-slate-400 mt-0.5">Thiết kế đề cương chi tiết và Chuẩn đầu ra (CLO) cho từng môn học</div>
+                                  <div className="text-[11px] text-slate-400 font-medium">Thiết kế đề cương chi tiết và Chuẩn đầu ra (CLO) cho từng môn học</div>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
                                 <Select
                                   value={courseStatusFilter}
                                   onChange={setCourseStatusFilter}
-                                  size="middle"
-                                  className="w-48 text-xs font-medium"
+                                  size="small"
+                                  className="w-40 text-xs font-medium"
                                   options={[
                                     { value: 'ALL', label: 'Tất cả trạng thái' },
                                     { value: 'SET', label: 'Đã thiết lập CLO' },
@@ -476,26 +491,26 @@ export default function SurveyCampaignForm() {
                                   ]}
                                 />
                                 <Input.Search
-                                  placeholder="Tìm môn học theo tên hoặc mã môn..."
+                                  placeholder="Tìm môn học..."
                                   allowClear
-                                  size="middle"
+                                  size="small"
                                   value={courseSearchText}
                                   onChange={(e) => setCourseSearchText(e.target.value)}
-                                  className="w-72 text-xs"
+                                  className="w-56 text-xs"
                                 />
                                 <Button
                                   type="text"
-                                  size="middle"
-                                  icon={<ChevronUp size={16} />}
+                                  size="small"
+                                  icon={<ChevronUp size={14} />}
                                   onClick={() => setIsS5Expanded(false)}
-                                  className="flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 h-9 px-3 font-semibold text-xs gap-1 border border-slate-200 transition-all ml-2"
+                                  className="flex items-center justify-center rounded-md bg-white hover:bg-slate-100 text-slate-600 h-7 px-2.5 font-medium text-[11px] gap-1 border border-slate-200 transition-all ml-1"
                                 >
                                   <span>Thu gọn</span>
                                 </Button>
                               </div>
                             </div>
 
-                            <div className="max-h-[480px] overflow-y-auto pr-1.5 space-y-3">
+                            <div className="max-h-[340px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
                               {filteredCourses.length > 0 ? filteredCourses.map((course: any) => {
                                 const courseCloData = stepResult?.[course.id]?.clos || stepResult?.[course.id] || [];
                                 const hasClo = Array.isArray(courseCloData) && courseCloData.length > 0;
@@ -503,15 +518,15 @@ export default function SurveyCampaignForm() {
                                 return (
                                   <div 
                                     key={course.id} 
-                                    className="p-4 bg-slate-50/50 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:border-blue-400 hover:bg-white hover:shadow-md transition-all group/item"
+                                    className="py-2 px-3 bg-white rounded-md border border-slate-200/70 flex items-center justify-between hover:border-blue-400 hover:shadow-xs transition-all group/item"
                                   >
-                                    <div className="flex items-center gap-4">
-                                      <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-xs font-mono shadow-2xs">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-md bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-[11px] font-mono">
                                         {course.code || 'MH'}
                                       </div>
                                       <div>
-                                        <div className="font-bold text-slate-800 text-sm group-hover/item:text-blue-600 transition-colors">{course.name}</div>
-                                        <div className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-2">
+                                        <div className="font-semibold text-slate-800 text-xs group-hover/item:text-blue-600 transition-colors">{course.name}</div>
+                                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-2">
                                           <span>Mã môn: <span className="font-mono text-slate-600 font-semibold">{course.code}</span></span>
                                           <span>•</span>
                                           <span>Số tín chỉ: <span className="text-slate-600 font-semibold">{course.credits || 3}</span></span>
@@ -519,13 +534,13 @@ export default function SurveyCampaignForm() {
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-3">
                                       {hasClo ? (
-                                        <Tag color="success" className="rounded-full px-3.5 py-1 border-none font-bold text-[10px] uppercase tracking-wider shadow-2xs">
+                                        <Tag color="success" className="rounded-full px-2.5 py-0.5 border-none font-bold text-[10px] uppercase tracking-wider">
                                           {courseCloData.length} CLO đã thiết lập
                                         </Tag>
                                       ) : (
-                                        <Tag color="default" className="rounded-full px-3.5 py-1 border-none font-medium text-[10px] text-slate-400 bg-slate-100">
+                                        <Tag color="default" className="rounded-full px-2.5 py-0.5 border-none font-medium text-[10px] text-slate-400 bg-slate-100">
                                           Chưa thiết lập CLO
                                         </Tag>
                                       )}
@@ -533,8 +548,9 @@ export default function SurveyCampaignForm() {
                                       <Tooltip title="Thiết kế đề cương / CLO">
                                         <Button
                                           type="text"
-                                          icon={<ChevronRight size={18} className="text-slate-400 group-hover/item:text-blue-500 transition-colors" />}
-                                          className="flex items-center justify-center hover:bg-blue-50 rounded-full w-8 h-8"
+                                          size="small"
+                                          icon={<ChevronRight size={15} className="text-slate-400 group-hover/item:text-blue-500 transition-colors" />}
+                                          className="flex items-center justify-center hover:bg-blue-50 rounded-md w-7 h-7"
                                           onClick={() => router.push(`/survey/campaigns/${id}/steps/${step.id || idx}?courseId=${course.id}&mode=edit`)}
                                         />
                                       </Tooltip>
@@ -542,7 +558,7 @@ export default function SurveyCampaignForm() {
                                   </div>
                                 );
                               }) : (
-                                <div className="text-center py-12 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm font-medium">
+                                <div className="text-center py-8 bg-white rounded-md border border-dashed border-slate-200 text-slate-400 text-xs font-medium">
                                   {courseSearchText || courseStatusFilter !== 'ALL' ? 'Không tìm thấy môn học phù hợp với bộ lọc.' : 'Chương trình đào tạo này chưa có môn học nào được gán.'}
                                 </div>
                               )}

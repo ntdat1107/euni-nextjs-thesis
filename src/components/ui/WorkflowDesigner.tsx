@@ -201,9 +201,10 @@ function DesignerInner({
       try {
         const parsed = JSON.parse(initialData);
         if (parsed.nodes && parsed.edges) {
-          // Ensure edges have markers if they come from old data
+          // Ensure edges have markers and smoothstep routing if they come from old data
           const edgesWithMarkers = parsed.edges.map((edge: any) => ({
             ...edge,
+            type: edge.type || 'smoothstep',
             markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 20, height: 20 }
           }));
           setNodes(parsed.nodes);
@@ -240,6 +241,7 @@ function DesignerInner({
         ...params,
         id: `e-${params.source}-${params.target}-${Date.now()}`,
         label: 'Xác nhận',
+        type: 'smoothstep',
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 20, height: 20 },
         style: { strokeWidth: 2, stroke: '#94a3b8' },

@@ -35,6 +35,32 @@
   h1, h2, h3, h4, h5, h6 {
     @apply text-slate-900 font-display font-bold tracking-tight;
   }
+
+  /* Enhanced Read-Only / Disabled Inputs & Textareas legibility for View Mode */
+  .ant-input-disabled,
+  .ant-input[disabled],
+  .ant-input-affix-wrapper-disabled,
+  .ant-select-disabled .ant-select-selector,
+  textarea:disabled,
+  input:disabled,
+  textarea[disabled],
+  input[disabled] {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    background-color: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    opacity: 1 !important;
+    cursor: default !important;
+  }
+
+  .ant-input-disabled::placeholder,
+  .ant-input[disabled]::placeholder,
+  textarea:disabled::placeholder,
+  input:disabled::placeholder {
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
+    font-style: italic;
+  }
 }
 
 @layer components {

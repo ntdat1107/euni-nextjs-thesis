@@ -215,8 +215,32 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
   };
 
   const removeStep = (tempId: string) => {
-    const newSteps = steps.filter(s => s.tempId !== tempId)
-      .map((s, i) => ({ ...s, orderNo: i + 1 }));
+    const stepToRemove = steps.find(s => s.tempId === tempId);
+    if (!stepToRemove) return;
+
+    const removedIdentifiers = new Set([
+      stepToRemove.tempId,
+      stepToRemove.code,
+      stepToRemove.screenCode
+    ].filter(Boolean));
+
+    const newSteps = steps
+      .filter(s => s.tempId !== tempId)
+      .map((s, i) => {
+        const currentPrereqs = Array.isArray(s.prerequisiteStepCodes) 
+          ? s.prerequisiteStepCodes 
+          : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : []);
+        
+        const cleanedPrereqs = currentPrereqs.filter(code => !removedIdentifiers.has(code));
+        
+        return {
+          ...s,
+          orderNo: i + 1,
+          prerequisiteStepCodes: cleanedPrereqs,
+          prerequisiteStepCode: cleanedPrereqs[0] || ''
+        };
+      });
+
     setSteps(newSteps);
   };
 
@@ -250,7 +274,20 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
     const master = stepDefinitions.find(m => String(m.id) === String(masterId) || m.stepCode === masterId);
     if (!master) return;
 
-    setSteps(steps.map(s => s.tempId === tempId ? {
+    // Check if this master step is already selected by another step in this template
+    const isDuplicate = steps.some(s => s.tempId !== tempId && (
+      String(s.masterStepId) === String(master.id) ||
+      String(s.masterStepId) === String(master.stepCode) ||
+      (master.stepCode && s.code === master.stepCode) ||
+      (master.stepCode && s.screenCode === master.stepCode)
+    ));
+
+    if (isDuplicate) {
+      message.warning(`Bước mẫu "${master.stepCode} - ${master.stepName}" đã được chọn trong quy trình này! Mỗi bước chỉ được xuất hiện 1 lần.`);
+      return;
+    }
+
+    setSteps(prev => prev.map(s => s.tempId === tempId ? {
       ...s,
       masterStepId: master.stepCode || master.id,
       name: master.stepName,
@@ -260,11 +297,109 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
     } : s));
   };
 
+  const updateStepFields = (tempId: string, fields: Partial<WorkflowStep>) => {
+    setSteps(prev => prev.map(s => s.tempId === tempId ? { ...s, ...fields } : s));
+  };
+
   const updateStepField = (tempId: string, field: keyof WorkflowStep, value: any) => {
-    setSteps(steps.map(s => s.tempId === tempId ? { ...s, [field]: value } : s));
+    updateStepFields(tempId, { [field]: value });
+  };
+
+  const validateUniqueSteps = (): boolean => {
+    const seen = new Set<string>();
+    for (const s of steps) {
+      const identifier = s.code || s.screenCode || String(s.masterStepId || '');
+      if (identifier) {
+        if (seen.has(identifier)) {
+          message.error(`Quy trình chứa bước trùng lặp ("${s.name || identifier}"). Mỗi bước chỉ được chọn 1 lần trong cùng quy trình.`);
+          return false;
+        }
+        seen.add(identifier);
+      }
+    }
+    return true;
   };
 
   const getPayload = (values: any) => {
+    // 1. Build lookup map for step lookup by tempId, code, or screenCode
+    const stepMap = new Map<string, WorkflowStep>();
+    steps.forEach(s => {
+      if (s.tempId) stepMap.set(s.tempId, s);
+      if (s.code) stepMap.set(s.code, s);
+      if (s.screenCode) stepMap.set(s.screenCode, s);
+    });
+
+    const findParentStep = (code: string): WorkflowStep | undefined => {
+      return stepMap.get(code);
+    };
+
+    // 2. Calculate depth / level of each step in DAG
+    const depthMap = new Map<string, number>();
+
+    const computeDepth = (step: WorkflowStep, visiting = new Set<string>()): number => {
+      if (depthMap.has(step.tempId)) return depthMap.get(step.tempId)!;
+      if (visiting.has(step.tempId)) return 0; // Prevent cycle
+
+      visiting.add(step.tempId);
+
+      const prereqs = Array.isArray(step.prerequisiteStepCodes) 
+        ? step.prerequisiteStepCodes 
+        : (step.prerequisiteStepCode ? [step.prerequisiteStepCode] : []);
+
+      if (prereqs.length === 0) {
+        depthMap.set(step.tempId, 0);
+        visiting.delete(step.tempId);
+        return 0;
+      }
+
+      let maxParentDepth = -1;
+      prereqs.forEach(pCode => {
+        const parent = findParentStep(pCode);
+        if (parent && parent.tempId !== step.tempId) {
+          const pDepth = computeDepth(parent, new Set(visiting));
+          if (pDepth > maxParentDepth) {
+            maxParentDepth = pDepth;
+          }
+        }
+      });
+
+      const currentDepth = maxParentDepth + 1;
+      depthMap.set(step.tempId, currentDepth);
+      visiting.delete(step.tempId);
+      return currentDepth;
+    };
+
+    steps.forEach(s => computeDepth(s));
+
+    // 3. Group steps by level for Y-axis calculation
+    const levelGroups = new Map<number, WorkflowStep[]>();
+    steps.forEach(s => {
+      const lvl = depthMap.get(s.tempId) || 0;
+      if (!levelGroups.has(lvl)) levelGroups.set(lvl, []);
+      levelGroups.get(lvl)!.push(s);
+    });
+
+    const positions = new Map<string, { x: number; y: number }>();
+    let maxLevel = 0;
+    let maxY = 150;
+
+    levelGroups.forEach((groupSteps, lvl) => {
+      if (lvl > maxLevel) maxLevel = lvl;
+      const count = groupSteps.length;
+      const x = 300 + lvl * 400;
+      const verticalSpacing = 260;
+
+      groupSteps.forEach((s, idx) => {
+        const y = 150 + (idx - (count - 1) / 2) * verticalSpacing;
+        if (y > maxY) maxY = y;
+        positions.set(s.tempId, { x, y });
+      });
+    });
+
+    const endX = 300 + (maxLevel + 1) * 400;
+    const endY = Math.max(250, maxY + 20);
+
+    // 4. Build Nodes
     const flowNodes = [
       {
         id: 'node-start',
@@ -283,10 +418,12 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
           ? s.approverRoles 
           : (s.approverRole ? [s.approverRole] : []);
 
+        const pos = positions.get(s.tempId) || { x: 300 + i * 400, y: 150 };
+
         return {
           id: s.tempId,
           type: 'state',
-          position: { x: 300 + i * 400, y: 150 },
+          position: pos,
           data: { 
             label: s.name, 
             orderNo: i + 1,
@@ -305,34 +442,94 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
       {
         id: 'node-end',
         type: 'end',
-        position: { x: 300 + steps.length * 400, y: 150 },
+        position: { x: endX, y: endY },
         data: { label: 'Kết thúc' }
       }
     ];
 
-    const flowEdges = [
-      {
-        id: 'edge-start',
-        source: 'node-start',
-        target: steps[0].tempId,
-        label: 'Bắt đầu',
-        markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-      },
-      ...steps.slice(0, -1).map((s, i) => ({
-        id: `e-${s.tempId}-${steps[i+1].tempId}`,
-        source: s.tempId,
-        target: steps[i+1].tempId,
-        label: 'Tiếp tục',
-        markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-      })),
-      {
-        id: 'edge-end',
-        source: steps[steps.length - 1].tempId,
+    // 5. Build Edges (DAG based on prerequisiteStepCodes)
+    const flowEdges: any[] = [];
+    const edgeSet = new Set<string>();
+    const isPrereqForOther = new Set<string>();
+
+    steps.forEach(s => {
+      const prereqs = Array.isArray(s.prerequisiteStepCodes) 
+        ? s.prerequisiteStepCodes 
+        : (s.prerequisiteStepCode ? [s.prerequisiteStepCode] : []);
+
+      if (prereqs.length === 0) {
+        const edgeId = `edge-start-${s.tempId}`;
+        if (!edgeSet.has(edgeId)) {
+          edgeSet.add(edgeId);
+          flowEdges.push({
+            id: edgeId,
+            source: 'node-start',
+            target: s.tempId,
+            type: 'smoothstep',
+            pathOptions: { borderRadius: 16 },
+            markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+          });
+        }
+      } else {
+        prereqs.forEach(pCode => {
+          const parent = findParentStep(pCode);
+          if (parent) {
+            isPrereqForOther.add(parent.tempId);
+            if (parent.code) isPrereqForOther.add(parent.code);
+            if (parent.screenCode) isPrereqForOther.add(parent.screenCode);
+
+            const edgeId = `e-${parent.tempId}-${s.tempId}`;
+            if (!edgeSet.has(edgeId)) {
+              edgeSet.add(edgeId);
+              flowEdges.push({
+                id: edgeId,
+                source: parent.tempId,
+                target: s.tempId,
+                label: 'Tiếp tục',
+                type: 'smoothstep',
+                pathOptions: { borderRadius: 16 },
+                markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+              });
+            }
+          }
+        });
+      }
+    });
+
+    // Connect leaf nodes (not prerequisite for any step) to node-end
+    steps.forEach(s => {
+      const isParent = isPrereqForOther.has(s.tempId) || 
+                       (s.code && isPrereqForOther.has(s.code)) || 
+                       (s.screenCode && isPrereqForOther.has(s.screenCode));
+      if (!isParent) {
+        const edgeId = `edge-${s.tempId}-end`;
+        if (!edgeSet.has(edgeId)) {
+          edgeSet.add(edgeId);
+          flowEdges.push({
+            id: edgeId,
+            source: s.tempId,
+            target: 'node-end',
+            label: 'Hoàn thành',
+            type: 'smoothstep',
+            pathOptions: { borderRadius: 16 },
+            markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
+          });
+        }
+      }
+    });
+
+    // Fallback: If no edge points to node-end, connect last step
+    const hasEndEdge = flowEdges.some(e => e.target === 'node-end');
+    if (!hasEndEdge && steps.length > 0) {
+      const lastStep = steps[steps.length - 1];
+      flowEdges.push({
+        id: `edge-${lastStep.tempId}-end`,
+        source: lastStep.tempId,
         target: 'node-end',
         label: 'Hoàn thành',
         markerEnd: { type: 'arrowclosed', color: '#94a3b8', width: 20, height: 20 }
-      }
-    ];
+      });
+    }
 
     const jsonContent = JSON.stringify({
       type: 'linear',
@@ -355,6 +552,8 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
         message.warning('Vui lòng thêm ít nhất 1 bước');
         return;
       }
+      if (!validateUniqueSteps()) return;
+
       setLoading(true);
       const result = await workflowService.syncDraft(getPayload(values));
       message.success('Đã lưu bản nháp thành công');
@@ -373,6 +572,7 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
         message.warning('Vui lòng thêm ít nhất 1 bước');
         return;
       }
+      if (!validateUniqueSteps()) return;
 
       setLoading(true);
       const result = await workflowService.saveOfficial(getPayload(values));
@@ -524,6 +724,7 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
                     <SortableStepItem
                       key={step.tempId}
                       step={step}
+                      allSteps={steps}
                       index={index}
                       totalSteps={steps.length}
                       roles={roles}
@@ -532,6 +733,7 @@ export default function WorkflowEditorModal({ open, editingId, onClose, onSucces
                       onMove={moveStep}
                       onSelectMaster={handleSelectMasterStep}
                       onUpdateField={updateStepField}
+                      onUpdateFields={updateStepFields}
                     />
                   ))}
                 </div>

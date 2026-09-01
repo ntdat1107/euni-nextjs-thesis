@@ -120,7 +120,10 @@ export default function ProfilePage() {
   if (!currentUser) return null;
 
   const roleLabel = roleCache.getRoleLabel(allRoles, currentUser.roles);
-  const roleColor = (currentUser.roles && currentUser.roles[0]?.toUpperCase() === 'ADMIN') ? 'red' : 'blue';
+  const firstRoleStr = currentUser.roles && currentUser.roles[0] 
+    ? (typeof currentUser.roles[0] === 'string' ? currentUser.roles[0] : (currentUser.roles[0]?.code || '')).replace(/^ROLE_/, '').toUpperCase()
+    : '';
+  const roleColor = firstRoleStr === 'ADMIN' ? 'red' : 'blue';
 
   const avatarInitials = currentUser.fullName ? currentUser.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'U';
 

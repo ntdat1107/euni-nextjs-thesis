@@ -82,7 +82,10 @@ export default function SurveyStepPage() {
           const userStr = localStorage.getItem('euni_user');
           if (userStr) {
             const parsedUser = JSON.parse(userStr);
-            userRoles = (parsedUser.roles || []).map((r: string) => r.toUpperCase());
+            userRoles = (parsedUser.roles || []).map((r: any) => {
+              const raw = typeof r === 'string' ? r : (r?.code || r?.name || '');
+              return raw.replace(/^ROLE_/, '').toUpperCase();
+            }).filter(Boolean);
           }
         } catch (e) {
           console.error('Failed to parse logged in user roles', e);
@@ -129,16 +132,45 @@ export default function SurveyStepPage() {
     try {
       setIsSaving(true);
       const screenCode = step?.configuration?.screenCode;
+      const currentStepDbId = step?.id || stepId;
 
-      if (screenCode === 'S5_CLO' && formData?.courseId) {
-        // S5_CLO: save per-course syllabus via dedicated API
-        await surveyCampaignService.saveCourseDetail(
-          id as string,
-          formData.courseId,
-          formData,
-          'COMPLETED'
-        );
-        message.success(`Đã lưu đề cương học phần [${formData.courseCode || formData.courseId}]`);
+      if (screenCode === 'S5_CLO') {
+        if (formData && typeof formData === 'object') {
+          if (formData.courseId) {
+            // Single course object in formData
+            await surveyCampaignService.saveCourseDetail(
+              id as string,
+              formData.courseId,
+              formData,
+              'COMPLETED',
+              currentStepDbId
+            );
+            message.success(`Đã lưu đề cương học phần [${formData.courseCode || formData.courseId}]`);
+          } else {
+            // Map of courses: call saveCourseDetail API for each course individually
+            const entries = Object.entries(formData);
+            let savedCount = 0;
+            for (const [cId, cData] of entries) {
+              if (cData && typeof cData === 'object' && (cData as any).courseId) {
+                await surveyCampaignService.saveCourseDetail(
+                  id as string,
+                  (cData as any).courseId || cId,
+                  cData,
+                  'COMPLETED',
+                  currentStepDbId
+                );
+                savedCount++;
+              }
+            }
+            if (savedCount > 0) {
+              message.success(`Đã lưu đề cương cho ${savedCount} học phần`);
+            } else {
+              message.info('Không có thông tin học phần nào được thay đổi');
+            }
+          }
+        }
+        // Also update step status to COMPLETED
+        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, formData);
       } else {
         // Default: save step-level result data
         await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, formData);
@@ -302,7 +334,7 @@ export default function SurveyStepPage() {
                       key: 'edit',
                       label: 'Chỉnh sửa',
                       type: 'primary',
-                      icon: <Edit size={13} />,
+                      icon: <Edit size={12} />,
                       onClick: () => setIsEdit(true),
                     },
                   ]
@@ -325,7 +357,7 @@ export default function SurveyStepPage() {
                       label: 'Lưu thông tin',
                       type: 'primary',
                       loading: isSaving,
-                      icon: <Save size={13} />,
+                      icon: <Save size={12} />,
                       onClick: handleSave,
                     },
                   ]

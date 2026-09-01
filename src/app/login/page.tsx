@@ -101,11 +101,11 @@ function LoginContent() {
           >
             <Form.Item
               name="username"
-              rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập!' }]}
+              rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập hoặc email!' }]}
             >
               <Input 
                 prefix={<UserOutlined className="text-slate-400" />} 
-                placeholder="Tên đăng nhập" 
+                placeholder="Tên đăng nhập hoặc Email" 
                 className="rounded-xl h-12"
               />
             </Form.Item>

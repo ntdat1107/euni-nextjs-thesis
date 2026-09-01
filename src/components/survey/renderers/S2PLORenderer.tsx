@@ -285,7 +285,7 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                 onBlur={handleBlur}
                 placeholder="Nhập nội dung PEO..."
                 autoSize={{ minRows: 3 }}
-                className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-500"
+                className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
               />
               {!readonly && (
                 <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removePEO(idx)} className="mt-1" />
@@ -332,7 +332,7 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                 onBlur={handleBlur}
                 placeholder="Nhập nội dung PLO..."
                 autoSize={{ minRows: 2 }}
-                className="w-full rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-500"
+                className="w-full rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
               />
 
               <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200 space-y-4 !mt-5">
@@ -352,7 +352,7 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                         onBlur={handleBlur}
                         placeholder="Nội dung PI..."
                         autoSize={{ minRows: 2 }}
-                        className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-500"
+                        className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
                       />
                       {!readonly && <Button type="text" danger size="small" icon={<DeleteOutlined className="text-xs" />} onClick={() => removePI(ploIdx, piIdx)} />}
                     </div>

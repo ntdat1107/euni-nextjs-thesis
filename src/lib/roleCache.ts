@@ -24,8 +24,10 @@ export const roleCache = {
 
   getRoleLabel: (rolesList: Role[], userRoles: string[] | undefined) => {
     if (!userRoles || userRoles.length === 0) return 'Người dùng';
-    const primaryRoleCode = userRoles[0].toUpperCase();
-    const role = rolesList.find(r => r.code.toUpperCase() === primaryRoleCode);
+    const firstRole = userRoles[0];
+    const rawCode = typeof firstRole === 'string' ? firstRole : ((firstRole as any)?.code || (firstRole as any)?.name || '');
+    const primaryRoleCode = rawCode.replace(/^ROLE_/, '').toUpperCase();
+    const role = rolesList.find(r => r.code.replace(/^ROLE_/, '').toUpperCase() === primaryRoleCode);
     return role ? role.name : 'Người dùng';
   }
 };

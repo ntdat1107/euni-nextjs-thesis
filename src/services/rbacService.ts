@@ -35,6 +35,10 @@ export const rbacService = {
     return api.post('/rbac/roles', role);
   },
 
+  updateRole: async (id: number | string, role: Partial<Role>): Promise<Role> => {
+    return api.put(`/rbac/roles/${id}`, role);
+  },
+
   deleteRole: async (id: number | string): Promise<void> => {
     return api.delete(`/rbac/roles/${id}`);
   },

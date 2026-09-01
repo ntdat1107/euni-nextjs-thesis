@@ -173,15 +173,16 @@ function UserManagementContent() {
     {
       title: 'Người dùng',
       key: 'user',
+      width: 220,
       render: (_: any, record: User) => (
         <div className="flex items-center gap-3 py-1">
           <Avatar 
             src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${record.username}`} 
-            className="border border-slate-100 ring-2 ring-white shadow-sm"
+            className="border border-slate-100 ring-2 ring-white shadow-sm shrink-0"
           />
-          <div>
-            <div className="font-bold text-slate-900">{record.fullName}</div>
-            <div className="text-xs text-slate-500 font-medium">{record.email}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-slate-900 truncate">{record.fullName}</div>
+            <div className="text-xs text-slate-500 font-medium truncate">{record.email}</div>
           </div>
         </div>
       ),
@@ -190,12 +191,14 @@ function UserManagementContent() {
       title: 'Mã NV/GV',
       dataIndex: 'employeeId',
       key: 'employeeId',
+      width: 120,
       render: (text: string) => <span className="font-mono font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded text-xs">{text}</span>
     },
     {
       title: 'Khoa',
       dataIndex: 'faculty',
       key: 'faculty',
+      width: 180,
       render: (code: string) => {
         const name = facultyMap.get(code);
         return <span className="font-medium text-slate-600">{name || code}</span>;
@@ -205,6 +208,7 @@ function UserManagementContent() {
       title: 'Vai trò',
       dataIndex: 'roles',
       key: 'roles',
+      width: 220,
       render: (userRoles: string[]) => (
         <Space wrap>
           {userRoles.map(role => (
@@ -219,11 +223,13 @@ function UserManagementContent() {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
+      width: 140,
       render: (status: string) => getStatusTag(status),
     },
     {
       title: 'Thao tác',
       key: 'actions',
+      width: 140,
       align: 'right' as const,
       render: (_: any, record: User) => (
         <Space>
@@ -281,7 +287,7 @@ function UserManagementContent() {
 
       {/* Stats */}
       <Row gutter={[24, 24]}>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card className="card-premium">
             <Statistic 
               title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Tổng số tài khoản</span>}
@@ -291,7 +297,7 @@ function UserManagementContent() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card className="card-premium">
             <Statistic 
               title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Đã kích hoạt</span>}
@@ -301,7 +307,7 @@ function UserManagementContent() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card className="card-premium">
             <Statistic 
               title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Chờ kích hoạt</span>}
@@ -311,7 +317,7 @@ function UserManagementContent() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card className="card-premium">
             <Statistic 
               title={<span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Đã vô hiệu</span>}
@@ -340,6 +346,7 @@ function UserManagementContent() {
             dataSource={filteredUsers} 
             columns={columns} 
             rowKey="id"
+            scroll={{ x: 'max-content' }}
             pagination={{ 
               pageSize: 10,
               showSizeChanger: false,
@@ -353,7 +360,7 @@ function UserManagementContent() {
       {/* Create User Modal */}
       <Modal
         title={
-          <div className="flex items-center gap-2 font-display text-lg py-2">
+          <div className="flex items-center gap-2 font-display text-lg py-1">
             <div className="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center">
               <UserPlus className="w-4 h-4 text-brand-600" />
             </div>
@@ -363,23 +370,23 @@ function UserManagementContent() {
         open={isCreateModalOpen}
         onCancel={() => setIsCreateModalOpen(false)}
         onOk={() => createForm.submit()}
-        width={720}
+        width={740}
         okText="Tạo tài khoản"
         cancelText="Hủy"
         className="premium-modal"
         centered
         forceRender={true}
       >
-        <div className="py-6">
+        <div className="py-2 max-h-[75vh] overflow-y-auto overflow-x-hidden custom-scrollbar px-1">
           <Form form={createForm} layout="vertical" onFinish={handleCreateUser} requiredMark="optional">
-            <Row gutter={24}>
+            <Row gutter={[16, 8]}>
               <Col span={12}>
                 <Form.Item 
                   name="fullName" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Họ và tên</span>} 
                   rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
                 >
-                  <Input placeholder="Nguyễn Văn A" className="rounded-xl h-11" />
+                  <Input placeholder="Nguyễn Văn A" className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -388,7 +395,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Email</span>} 
                   rules={[{ required: true, type: 'email', message: 'Email không hợp lệ' }]}
                 >
-                  <Input placeholder="example@euni.edu.vn" className="rounded-xl h-11" />
+                  <Input placeholder="example@euni.edu.vn" className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -397,7 +404,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Tên đăng nhập</span>} 
                   rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }]}
                 >
-                  <Input placeholder="lecturer_a" className="rounded-xl h-11" />
+                  <Input placeholder="lecturer_a" className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -406,7 +413,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã số NV/GV</span>} 
                   rules={[{ required: true, message: 'Vui lòng nhập mã số' }]}
                 >
-                  <Input placeholder="GV-001" className="rounded-xl h-11" />
+                  <Input placeholder="GV-001" className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -415,7 +422,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Khoa</span>} 
                   rules={[{ required: true, message: 'Vui lòng chọn khoa' }]}
                 >
-                  <Select placeholder="Chọn khoa" className="rounded-xl h-11">
+                  <Select placeholder="Chọn khoa" className="rounded-xl h-10">
                     {faculties.map(f => (
                       <Select.Option key={f.code} value={f.code}>{f.name}</Select.Option>
                     ))}
@@ -427,7 +434,7 @@ function UserManagementContent() {
                   name="phone" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Số điện thoại</span>}
                 >
-                  <Input placeholder="090..." className="rounded-xl h-11" />
+                  <Input placeholder="090..." className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={24}>
@@ -436,7 +443,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Vai trò hệ thống</span>} 
                   rules={[{ required: true, message: 'Vui lòng chọn ít nhất 1 vai trò' }]}
                 >
-                  <Select mode="multiple" placeholder="Chọn vai trò" className="rounded-xl min-h-[44px]">
+                  <Select mode="multiple" placeholder="Chọn vai trò" className="rounded-xl min-h-[40px]">
                     {roles.map(r => (
                       <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>
                     ))}
@@ -451,7 +458,7 @@ function UserManagementContent() {
       {/* Edit User Modal */}
       <Modal
         title={
-          <div className="flex items-center gap-2 font-display text-lg py-2">
+          <div className="flex items-center gap-2 font-display text-lg py-1">
             <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
               <Edit3 className="w-4 h-4 text-blue-600" />
             </div>
@@ -461,23 +468,36 @@ function UserManagementContent() {
         open={isEditModalOpen}
         onCancel={() => setIsEditModalOpen(false)}
         onOk={() => editForm.submit()}
-        width={720}
+        width={740}
         okText="Cập nhật"
         cancelText="Hủy"
         className="premium-modal"
         centered
         forceRender={true}
       >
-        <div className="py-6">
+        <div className="py-2 max-h-[75vh] overflow-y-auto overflow-x-hidden custom-scrollbar px-1">
           <Form form={editForm} layout="vertical" onFinish={handleUpdateUser} requiredMark="optional">
-            <Row gutter={24}>
+            <Row gutter={[16, 8]}>
+              <Col span={12}>
+                <Form.Item 
+                  name="username" 
+                  label={
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Tên đăng nhập</span>
+                      <span className="text-[10px] text-slate-400 font-normal italic">(Cố định)</span>
+                    </div>
+                  } 
+                >
+                  <Input className="rounded-xl h-10 bg-slate-50 text-slate-700 font-mono font-medium cursor-not-allowed" disabled />
+                </Form.Item>
+              </Col>
               <Col span={12}>
                 <Form.Item 
                   name="fullName" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Họ và tên</span>} 
                   rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
                 >
-                  <Input className="rounded-xl h-11" />
+                  <Input className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -486,7 +506,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Email</span>} 
                   rules={[{ required: true, type: 'email', message: 'Email không hợp lệ' }]}
                 >
-                  <Input className="rounded-xl h-11" />
+                  <Input className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -494,7 +514,7 @@ function UserManagementContent() {
                   name="employeeId" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã số NV/GV</span>} 
                 >
-                  <Input className="rounded-xl h-11" />
+                  <Input className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -502,7 +522,7 @@ function UserManagementContent() {
                   name="phone" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Số điện thoại</span>}
                 >
-                  <Input className="rounded-xl h-11" />
+                  <Input className="rounded-xl h-10" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -510,19 +530,19 @@ function UserManagementContent() {
                   name="faculty" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Khoa</span>} 
                 >
-                  <Select className="rounded-xl h-11">
+                  <Select className="rounded-xl h-10">
                     {faculties.map(f => (
                       <Select.Option key={f.code} value={f.code}>{f.name}</Select.Option>
                     ))}
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={12}>
+              <Col span={24}>
                 <Form.Item 
                   name="status" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</span>} 
                 >
-                  <Select className="rounded-xl h-11">
+                  <Select className="rounded-xl h-10">
                     <Select.Option value="Active">Đã kích hoạt</Select.Option>
                     <Select.Option value="Pending">Chờ kích hoạt</Select.Option>
                     <Select.Option value="Disabled">Đã vô hiệu</Select.Option>
@@ -535,7 +555,7 @@ function UserManagementContent() {
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Vai trò hệ thống</span>} 
                   rules={[{ required: true, message: 'Vui lòng chọn ít nhất 1 vai trò' }]}
                 >
-                  <Select mode="multiple" className="rounded-xl min-h-[44px]">
+                  <Select mode="multiple" className="rounded-xl min-h-[40px]">
                     {roles.map(r => (
                       <Select.Option key={r.code} value={r.code}>{r.name}</Select.Option>
                     ))}
