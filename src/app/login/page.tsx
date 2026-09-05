@@ -47,6 +47,7 @@ function LoginContent() {
       const response = await authService.login({
         username: values.username,
         password: values.password,
+        remember: !!values.remember,
       });
 
       // Store tokens and user info
