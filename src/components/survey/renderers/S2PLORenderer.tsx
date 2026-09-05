@@ -267,6 +267,7 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
           <RichtextEditor
             value={state.mucTieuHeadingHtml}
             disabled={readonly}
+            contentType="PLO"
             minHeight={120}
             onChange={(val) => handleStateChange({ mucTieuHeadingHtml: val }, false)}
           />
@@ -312,6 +313,7 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
           <RichtextEditor
             value={state.chuanDauRaHeadingHtml}
             disabled={readonly}
+            contentType="PLO"
             minHeight={120}
             onChange={(val) => handleStateChange({ chuanDauRaHeadingHtml: val }, false)}
           />

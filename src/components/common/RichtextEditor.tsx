@@ -45,6 +45,7 @@ interface RichtextEditorProps {
   disabled?: boolean;
   minHeight?: number;
   error?: boolean;
+  contentType?: 'CLO' | 'PLO' | 'SYLLABUS' | 'COURSE_DESCRIPTION' | 'PREREQUISITES' | 'ASSESSMENT' | 'GENERAL' | string;
 }
 
 export default function RichtextEditor({ 
@@ -53,7 +54,8 @@ export default function RichtextEditor({
   placeholder, 
   disabled,
   minHeight = 220,
-  error = false
+  error = false,
+  contentType = 'GENERAL'
 }: RichtextEditorProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
@@ -163,7 +165,10 @@ export default function RichtextEditor({
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ prompt: finalPrompt }),
+        body: JSON.stringify({ 
+          prompt: finalPrompt,
+          contentType: contentType || 'GENERAL'
+        }),
       });
 
       if (!response.body) throw new Error('ReadableStream not supported');
@@ -224,11 +229,58 @@ export default function RichtextEditor({
     setPromptText('');
   };
 
-  const quickPrompts = [
-    "Viết mô tả chuẩn đầu ra PLO chuyên nghiệp",
-    "Tóm tắt ngắn gọn nội dung môn học",
-    "Gợi ý ma trận kỹ năng chi tiết"
-  ];
+  const getContextLabel = () => {
+    switch (contentType?.toUpperCase()) {
+      case 'CLO': return 'Chuẩn đầu ra (CLO)';
+      case 'PLO': return 'Chuẩn đầu ra (PLO)';
+      case 'SYLLABUS': return 'Đề cương môn học';
+      case 'COURSE_DESCRIPTION': return 'Mô tả học phần';
+      case 'PREREQUISITES': return 'Điều kiện môn học';
+      case 'ASSESSMENT': return 'Phương pháp đánh giá';
+      default: return 'Ngữ cảnh học thuật';
+    }
+  };
+
+  const getQuickPrompts = () => {
+    switch (contentType?.toUpperCase()) {
+      case 'CLO':
+        return [
+          "Xây dựng bộ CLO theo thang đo Bloom (Nhớ, Hiểu, Vận dụng, Phân tích...)",
+          "Bổ sung CLO về kỹ năng mềm, thái độ & làm việc nhóm",
+          "Tối ưu các động từ đo lường chuẩn kiểm định AUN-QA / MOET"
+        ];
+      case 'PLO':
+        return [
+          "Soạn bộ PLO chương trình đào tạo chuẩn kiểm định AUN-QA",
+          "Bổ sung các chỉ số hiệu quả PI đo lường cho từng PLO",
+          "Tạo PLO về khả năng tư duy phản biện & giải quyết vấn đề phức tạp"
+        ];
+      case 'SYLLABUS':
+        return [
+          "Gợi ý khung đề cương chi tiết 15 tuần học từ cơ bản đến nâng cao",
+          "Phân bổ hợp lý thời lượng Lý thuyết, Thực hành & Tự học",
+          "Thêm các chủ đề công nghệ hiện đại thực tiễn vào chương trình"
+        ];
+      case 'COURSE_DESCRIPTION':
+        return [
+          "Soạn mô tả tổng quan học phần hấp dẫn & chuẩn học thuật đại học",
+          "Tóm tắt mục tiêu, vai trò và giá trị cốt lõi sinh viên tích lũy được"
+        ];
+      case 'ASSESSMENT':
+        return [
+          "Thiết kế ma trận đánh giá học phần với phân bổ trọng số (%)",
+          "Đề xuất tiêu chí đánh giá chi tiết đồ án/bài tập lớn (Rubrics)"
+        ];
+      default:
+        return [
+          "Viết mô tả chuẩn đầu ra chuyên nghiệp",
+          "Tóm tắt ngắn gọn nội dung kiến thức môn học",
+          "Gợi ý ma trận kỹ năng chi tiết"
+        ];
+    }
+  };
+
+  const quickPrompts = getQuickPrompts();
 
   const aiPopoverContent = (
     <div className="w-full p-5 space-y-4 font-sans bg-white rounded-2xl">
@@ -241,10 +293,10 @@ export default function RichtextEditor({
           <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <span>Trợ lý AI Trí tuệ nhân tạo</span>
             <Tag color="blue" className="border-none text-[10px] font-bold uppercase rounded-full px-2 py-0.2 bg-blue-50 text-blue-600">
-              GPT-4o Stream
+              Gemini Flash • {getContextLabel()}
             </Tag>
           </div>
-          <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung học thuật</div>
+          <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung theo ngữ cảnh {getContextLabel()}</div>
         </div>
       </div>
 

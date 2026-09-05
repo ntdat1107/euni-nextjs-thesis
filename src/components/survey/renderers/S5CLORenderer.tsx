@@ -688,6 +688,7 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
               <RichtextEditor
                 value={currentSyllabus.knowledgeObjective || ''}
                 disabled={isReadonlySection}
+                contentType="CLO"
                 onChange={val => updateSyllabus({ knowledgeObjective: val })}
                 placeholder="Trình bày những kiến thức sinh viên tích lũy được sau khi hoàn thành môn học..."
               />
@@ -697,6 +698,7 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
               <RichtextEditor
                 value={currentSyllabus.skillsObjective || ''}
                 disabled={isReadonlySection}
+                contentType="CLO"
                 onChange={val => updateSyllabus({ skillsObjective: val })}
                 placeholder="Trình bày các kỹ năng cứng và mềm sinh viên đạt được..."
               />
