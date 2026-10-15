@@ -719,15 +719,16 @@ export default function SurveyCampaignForm() {
         <Breadcrumb 
           className="text-slate-400 text-xs"
           items={[
-            { title: <a onClick={() => router.push('/survey/campaigns')} className="hover:text-blue-600">Đợt khảo sát</a> },
-            { title: campaignData?.name || 'Chi tiết đợt khảo sát' }
+            { title: <a onClick={() => router.push('/training/programs')} className="hover:text-blue-600">Đào tạo</a> },
+            { title: <a onClick={() => router.push('/training/builder')} className="hover:text-blue-600">Xây dựng CTĐT</a> },
+            { title: campaignData?.name || (isNew ? 'Tạo mới đợt xây dựng' : 'Chi tiết đợt xây dựng') }
           ]}
         />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center gap-4 flex-1">
             <div className="flex items-center gap-3">
               <Title level={2} className="!mb-0 !text-slate-800 tracking-tight font-bold text-2xl">
-                {isNew ? 'Thiết lập Đợt Khảo sát mới' : (isView ? campaignData?.name : `Chỉnh sửa: ${campaignData?.name}`)}
+                {isNew ? 'Xây dựng Chương trình Đào tạo' : (isView ? campaignData?.name : `Chỉnh sửa: ${campaignData?.name}`)}
               </Title>
               {!isNew && (
                 <Tag color={config.color} className="rounded-full px-3.5 py-1 border-none font-bold text-xs uppercase tracking-wider shadow-2xs">
@@ -932,12 +933,21 @@ export default function SurveyCampaignForm() {
                     name="programId"
                     label={<span className="font-semibold text-slate-700 text-sm">Chương trình đào tạo</span>}
                     rules={[{ required: true, message: 'Vui lòng chọn chương trình đào tạo' }]}
+                    extra={isNew ? <span className="text-[11px] text-slate-400 mt-1 block">Chỉ cho phép chọn CTĐT đang ở trạng thái Bản nháp (DRAFT). Sau khi khởi tạo, CTĐT sẽ tự động chuyển sang Đang xây dựng/rà soát (REVIEWING).</span> : null}
                     className="!mb-0"
                   >
                     <Select
-                      placeholder="Chọn chương trình đào tạo"
+                      placeholder={isNew ? "Chọn CTĐT (chỉ hiển thị CTĐT bản nháp)" : "Chọn chương trình đào tạo"}
                       className="h-10 rounded-lg text-sm"
-                      options={programs.map(p => ({ label: `[${p.code}] ${p.name}`, value: p.id }))}
+                      options={(isNew ? programs.filter(p => (p.status || '').toUpperCase() === 'DRAFT') : programs).map(p => ({
+                        label: `[${p.code}] ${p.name} (${p.status || 'DRAFT'})`,
+                        value: p.id
+                      }))}
+                      notFoundContent={
+                        <div className="py-2 text-center text-xs text-slate-400">
+                          {isNew ? 'Không có CTĐT nào ở trạng thái Bản nháp (DRAFT)' : 'Không tìm thấy CTĐT'}
+                        </div>
+                      }
                     />
                   </Form.Item>
                 </Col>

@@ -45,7 +45,8 @@ export function usePrograms() {
   });
 
   const assignCoursesMutation = useMutation({
-    mutationFn: ({ id, courseIds }: { id: number | string; courseIds: (number | string)[] }) => programService.assignCourses(id, courseIds),
+    mutationFn: ({ id, courseIds, items }: { id: number | string; courseIds?: (number | string)[]; items?: any[] }) => 
+      programService.assignCourses(id, items ? { items } : (courseIds || [])),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programs'] });
       message.success('Cập nhật danh sách môn học thành công');

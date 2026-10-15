@@ -17,7 +17,6 @@ import {
   Statistic,
   App,
   Tooltip,
-  Divider,
   Tag
 } from 'antd';
 import { 
@@ -26,12 +25,12 @@ import {
   Trash2,
   RefreshCw,
   Edit3,
-  BookOpen,
   GraduationCap,
   FileText
 } from 'lucide-react';
 import { useMajors } from '@/hooks/useMajors';
 import { useFaculties } from '@/hooks/useFaculties';
+import { useDepartments } from '@/hooks/useDepartments';
 import TableSkeleton from '@/components/ui/TableSkeleton';
 import { Major } from '@/types/academic';
 
@@ -39,23 +38,27 @@ const { Title, Text } = Typography;
 
 function MajorManagementContent() {
   const { majors = [], isLoading: loadingMajors, createMajor, updateMajor, deleteMajor } = useMajors();
-  const { faculties = [], isLoading: loadingDepts } = useFaculties();
-  const { message, modal } = App.useApp();
+  const { faculties = [], isLoading: loadingFaculties } = useFaculties();
+  const { departments = [], isLoading: loadingDepts } = useDepartments();
+  const { modal } = App.useApp();
 
-  const isLoading = loadingMajors || loadingDepts;
+  const isLoading = loadingMajors || loadingFaculties || loadingDepts;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMajor, setEditingMajor] = useState<Major | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [selectedFacultyId, setSelectedFacultyId] = useState<number | undefined>(undefined);
   const [form] = Form.useForm();
 
   const handleOpenModal = (major?: Major) => {
     if (major) {
       setEditingMajor(major);
+      setSelectedFacultyId(major.facultyId);
       form.setFieldsValue({
         ...major,
       });
     } else {
       setEditingMajor(null);
+      setSelectedFacultyId(undefined);
       form.resetFields();
     }
     setIsModalOpen(true);
@@ -86,9 +89,13 @@ function MajorManagementContent() {
     });
   };
 
+  const filteredDepartmentsInModal = departments.filter((d) => 
+    !selectedFacultyId || d.facultyId === selectedFacultyId
+  );
+
   const filteredMajors = majors.filter(major => 
-    major.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    major.code.toLowerCase().includes(searchText.toLowerCase())
+    (major.name || '').toLowerCase().includes(searchText.toLowerCase()) ||
+    (major.code || '').toLowerCase().includes(searchText.toLowerCase())
   );
 
   const columns = [
@@ -97,11 +104,11 @@ function MajorManagementContent() {
       key: 'major',
       render: (_: any, record: Major) => (
         <div className="flex items-center gap-3 py-1">
-          <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center border border-brand-100">
-            <GraduationCap className="w-5 h-5 text-brand-600" />
+          <div className="w-10 h-10 flex-shrink-0 bg-brand-50 rounded-xl flex items-center justify-center border border-brand-100">
+            <GraduationCap className="w-5 h-5 text-brand-600 flex-shrink-0" />
           </div>
-          <div>
-            <div className="font-bold text-slate-900">{record.name}</div>
+          <div className="min-w-0">
+            <div className="font-bold text-slate-900 truncate">{record.name}</div>
             <div className="text-xs text-slate-500 font-medium">Mã ngành: {record.code}</div>
           </div>
         </div>
@@ -111,7 +118,13 @@ function MajorManagementContent() {
       title: 'Khoa',
       dataIndex: 'facultyName',
       key: 'facultyName',
-      render: (text: string) => <span className="font-medium text-slate-600">{text || 'N/A'}</span>
+      render: (text: string) => <span className="font-medium text-slate-700">{text || '---'}</span>
+    },
+    {
+      title: 'Bộ môn',
+      dataIndex: 'departmentName',
+      key: 'departmentName',
+      render: (text: string) => <span className="font-medium text-slate-600">{text || '---'}</span>
     },
     {
       title: 'Mô tả',
@@ -126,7 +139,7 @@ function MajorManagementContent() {
       key: 'programCount',
       render: (count: number) => (
         <Tag color="blue" className="rounded-lg font-bold border-0 px-3 py-1">
-          {count} chương trình
+          {count || 0} chương trình
         </Tag>
       )
     },
@@ -140,8 +153,8 @@ function MajorManagementContent() {
             <Button 
               type="text" 
               icon={<FileText className="w-4 h-4 text-brand-500" />} 
-              onClick={() => window.location.href = `/master-data/programs?majorId=${record.id}`}
-              className="hover:bg-brand-50 rounded-lg"
+              onClick={() => window.location.href = `/training/programs?majorId=${record.id}`}
+              className="hover:bg-brand-50 rounded-lg cursor-pointer"
             />
           </Tooltip>
           <Tooltip title="Chỉnh sửa">
@@ -149,7 +162,7 @@ function MajorManagementContent() {
               type="text" 
               icon={<Edit3 className="w-4 h-4 text-blue-500" />} 
               onClick={() => handleOpenModal(record)}
-              className="hover:bg-blue-50 rounded-lg"
+              className="hover:bg-blue-50 rounded-lg cursor-pointer"
             />
           </Tooltip>
           <Tooltip title="Xóa">
@@ -158,7 +171,7 @@ function MajorManagementContent() {
               danger 
               icon={<Trash2 className="w-4 h-4" />} 
               onClick={() => handleDelete(record.id)}
-              className="hover:bg-rose-50 rounded-lg"
+              className="hover:bg-rose-50 rounded-lg cursor-pointer"
             />
           </Tooltip>
         </Space>
@@ -167,7 +180,7 @@ function MajorManagementContent() {
   ];
 
   if (isLoading) {
-    return <TableSkeleton rows={10} columns={4} />;
+    return <TableSkeleton rows={10} columns={5} />;
   }
 
   return (
@@ -175,14 +188,14 @@ function MajorManagementContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <Title level={2} className="!mb-1 font-display tracking-tight">Quản lý Ngành học</Title>
+          <Title level={2} className="!mb-1 font-display tracking-tight">Danh mục Ngành học</Title>
           <Text className="text-slate-500 font-medium">Danh mục các ngành đào tạo chính thức của hệ thống.</Text>
         </div>
         <Button 
           type="primary" 
           icon={<Plus className="w-5 h-5" />} 
           onClick={() => handleOpenModal()}
-          className="h-11 px-6 shadow-lg shadow-brand-100 btn-hover-effect"
+          className="h-11 px-6 shadow-lg shadow-brand-100 btn-hover-effect cursor-pointer"
         >
           Thêm ngành học
         </Button>
@@ -212,7 +225,7 @@ function MajorManagementContent() {
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
-          <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg" />
+          <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg cursor-pointer" />
         </div>
         <Table 
           dataSource={filteredMajors} 
@@ -232,7 +245,7 @@ function MajorManagementContent() {
         title={
           <div className="flex items-center gap-2 font-display text-lg py-2">
             <div className="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-brand-600" />
+              <GraduationCap className="w-4 h-4 text-brand-600" />
             </div>
             <span>{editingMajor ? 'Cập Nhật Ngành Học' : 'Thêm Ngành Học Mới'}</span>
           </div>
@@ -258,23 +271,47 @@ function MajorManagementContent() {
                   <Input placeholder="Kỹ thuật phần mềm" className="rounded-xl h-11" />
                 </Form.Item>
               </Col>
-              <Col span={12}>
+              <Col span={24}>
                 <Form.Item 
                   name="code" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Mã ngành</span>} 
                   rules={[{ required: true, message: 'Vui lòng nhập mã ngành' }]}
                 >
-                  <Input placeholder="SE" className="rounded-xl h-11" />
+                  <Input placeholder="7480103" className="rounded-xl h-11" />
                 </Form.Item>
               </Col>
-               <Col span={12}>
+              <Col span={12}>
                 <Form.Item 
                   name="facultyId" 
                   label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Khoa</span>} 
                 >
-                  <Select placeholder="Chọn khoa" className="rounded-xl h-11">
+                  <Select 
+                    placeholder="Chọn khoa" 
+                    className="rounded-xl h-11"
+                    allowClear
+                    onChange={(val) => {
+                      setSelectedFacultyId(val);
+                      form.setFieldValue('departmentId', undefined);
+                    }}
+                  >
                     {faculties.map(f => (
                       <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item 
+                  name="departmentId" 
+                  label={<span className="text-xs font-bold uppercase tracking-wider text-slate-500">Bộ môn</span>} 
+                >
+                  <Select 
+                    placeholder="Chọn bộ môn" 
+                    className="rounded-xl h-11"
+                    allowClear
+                  >
+                    {filteredDepartmentsInModal.map(d => (
+                      <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
                     ))}
                   </Select>
                 </Form.Item>

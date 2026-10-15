@@ -41,6 +41,8 @@
   .ant-input[disabled],
   .ant-input-affix-wrapper-disabled,
   .ant-select-disabled .ant-select-selector,
+  .ant-select-disabled .ant-select-selection-item,
+  .ant-select-disabled .ant-select-selection-placeholder,
   textarea:disabled,
   input:disabled,
   textarea[disabled],

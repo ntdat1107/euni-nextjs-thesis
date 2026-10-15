@@ -1,3 +1,5 @@
+import { NAV_PAGES } from '@/constants/navigationPages';
+
 export interface PermissionState {
   [pageId: string]: {
     [roleCode: string]: {
@@ -24,20 +26,13 @@ export function isPathAllowed(pathname: string, userRoles: string[]): boolean {
     return true;
   }
 
-  // Map route pathname to pageId
-  let pageId = '';
-  if (pathname.startsWith('/workflow/templates')) pageId = 'workflow-templates';
-  else if (pathname.startsWith('/workflow/master-steps')) pageId = 'workflow-master-steps';
-  else if (pathname.startsWith('/master-data/majors')) pageId = 'majors';
-  else if (pathname.startsWith('/master-data/programs')) pageId = 'programs';
-  else if (pathname.startsWith('/master-data/subjects')) pageId = 'subjects';
-  else if (pathname.startsWith('/survey/campaigns')) pageId = 'survey-campaigns';
-  else if (pathname.startsWith('/admin/users')) pageId = 'users';
-  else if (pathname.startsWith('/admin/rbac')) pageId = 'rbac';
+  // Dynamic Route to pageId Lookup from single source of truth
+  const targetPage = NAV_PAGES.find((p) => p.path !== '/' && pathname.startsWith(p.path));
+  if (!targetPage) return true; // Default allow for unspecified routes
 
-  if (!pageId) return true; // Default allow for unspecified routes
+  const pageId = targetPage.id;
 
-  // 1. Check saved permissions in localStorage
+  // 1. Check saved custom permissions in localStorage
   if (typeof window !== 'undefined') {
     const savedStr = localStorage.getItem('euni_sidebar_page_permissions');
     if (savedStr) {
@@ -51,20 +46,6 @@ export function isPathAllowed(pathname: string, userRoles: string[]): boolean {
     }
   }
 
-  // 2. Default permission mapping fallback
-  const defaultAllowedPages: Record<string, string[]> = {
-    ADMIN: ['dashboard', 'workflow-templates', 'workflow-master-steps', 'survey-campaigns', 'subjects', 'programs', 'majors', 'users', 'rbac', 'profile'],
-    DTDH: ['dashboard', 'workflow-templates', 'workflow-master-steps', 'survey-campaigns', 'subjects', 'programs', 'majors', 'users', 'rbac', 'profile'],
-    DEAN: ['dashboard', 'workflow-templates', 'workflow-master-steps', 'survey-campaigns', 'subjects', 'programs', 'majors', 'profile'],
-    HEAD_DEPT: ['dashboard', 'subjects', 'programs', 'majors', 'profile'],
-    LECTURER: ['dashboard', 'subjects', 'programs', 'majors', 'profile'],
-    COMMITTEE: ['dashboard', 'workflow-templates', 'workflow-master-steps', 'subjects', 'profile'],
-    COUNCIL: ['dashboard', 'workflow-templates', 'subjects', 'programs', 'profile'],
-    QA: ['dashboard', 'survey-campaigns', 'subjects', 'programs', 'profile'],
-  };
-
-  return normalizedRoles.some((role) => {
-    const allowedList = defaultAllowedPages[role];
-    return allowedList ? allowedList.includes(pageId) : false;
-  });
+  // 2. Default permission fallback from NAV_PAGES defaultRoles
+  return normalizedRoles.some((role) => targetPage.defaultRoles.includes(role));
 }

@@ -186,3 +186,66 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * Universal fetch wrapper for streaming API calls (SSE / ReadableStream).
+ * Automatically injects JWT Access Token, handles HTTP 401 Unauthorized by calling
+ * the /auth/refresh-token API, updates localStorage, and seamlessly retries the request.
+ */
+export async function fetchWithTokenRefresh(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const getAuthHeader = (): Record<string, string> => {
+    if (typeof window === 'undefined') return {};
+    const token = localStorage.getItem('euni_access_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const initialHeaders: Record<string, string> = {
+    ...getAuthHeader(),
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  let response = await fetch(url, { ...options, headers: initialHeaders });
+
+  // If initial request returned HTTP 401, attempt to refresh token and retry
+  if (response.status === 401 && typeof window !== 'undefined') {
+    const refreshToken = localStorage.getItem('euni_refresh_token');
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        const refreshData = await refreshRes.json();
+        const dataPayload = refreshData.data || refreshData;
+        const newAccessToken = dataPayload?.accessToken;
+
+        if (newAccessToken) {
+          localStorage.setItem('euni_access_token', newAccessToken);
+          if (dataPayload.refreshToken) {
+            localStorage.setItem('euni_refresh_token', dataPayload.refreshToken);
+          }
+
+          // Retry request with new Access Token
+          const retryHeaders: Record<string, string> = {
+            ...((options.headers as Record<string, string>) || {}),
+            Authorization: `Bearer ${newAccessToken}`,
+          };
+          response = await fetch(url, { ...options, headers: retryHeaders });
+        } else {
+          handleLogout();
+        }
+      } catch (err) {
+        handleLogout();
+      }
+    } else {
+      handleLogout();
+    }
+  }
+
+  return response;
+}

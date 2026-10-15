@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+import { DYNAMIC_NAV_ITEMS } from '@/constants/navigationPages';
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -34,62 +36,7 @@ interface NavItemProps {
   collapsed?: boolean;
 }
 
-const NAV_ITEMS: NavItemProps[] = [
-  {
-    id: 'dashboard',
-    label: 'Bảng điều khiển',
-    icon: LayoutDashboard,
-    path: '/',
-    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
-  },
-  {
-    id: 'workflow',
-    label: 'Quy trình',
-    icon: GitBranch,
-    roles: ['ADMIN', 'DTDH'],
-    children: [
-      { id: 'workflow-templates', label: 'Mẫu quy trình', path: '/workflow/templates', roles: ['ADMIN', 'DTDH'] },
-      { id: 'workflow-master-steps', label: 'Kho bước mẫu', path: '/workflow/master-steps', roles: ['ADMIN', 'DTDH'] },
-    ],
-  },
-  {
-    id: 'master-data',
-    label: 'Dữ liệu gốc',
-    icon: GraduationCap,
-    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER'],
-    children: [
-      { id: 'majors', label: 'Ngành học', path: '/master-data/majors', roles: ['ADMIN', 'DTDH'] },
-      { id: 'programs', label: 'Chương trình', path: '/master-data/programs', roles: ['ADMIN', 'DTDH'] },
-      { id: 'subjects', label: 'Học phần', path: '/master-data/subjects', roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER'] },
-    ],
-  },
-  {
-    id: 'survey',
-    label: 'Khảo sát',
-    icon: BarChart3,
-    roles: ['ADMIN', 'DTDH', 'DEAN', 'QA'],
-    children: [
-      { id: 'campaigns', label: 'Đợt khảo sát', path: '/survey/campaigns', roles: ['ADMIN', 'DTDH', 'DEAN', 'QA'] },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'Hệ thống',
-    icon: Shield,
-    roles: ['ADMIN'],
-    children: [
-      { id: 'users', label: 'Người dùng', path: '/admin/users', roles: ['ADMIN'] },
-      { id: 'rbac', label: 'Phân quyền (RBAC)', path: '/admin/rbac', roles: ['ADMIN'] },
-    ],
-  },
-  {
-    id: 'profile',
-    label: 'Hồ sơ người dùng',
-    icon: User,
-    path: '/profile',
-    roles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
-  },
-];
+const NAV_ITEMS: NavItemProps[] = DYNAMIC_NAV_ITEMS as NavItemProps[];
 
 export default function Sidebar({
   collapsed,

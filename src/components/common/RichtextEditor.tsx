@@ -35,7 +35,7 @@ import {
 import { Sparkles, Send, Loader2, RefreshCw, PlusCircle, Replace, X, Bot, Check } from 'lucide-react';
 import { Popover, Input, Button, Tag, Tooltip, Modal } from 'antd';
 
-import 'ckeditor5/translations/vi.js';
+import { fetchWithTokenRefresh } from '@/services/api';
 import 'ckeditor5/ckeditor5.css';
 
 interface RichtextEditorProps {
@@ -45,7 +45,9 @@ interface RichtextEditorProps {
   disabled?: boolean;
   minHeight?: number;
   error?: boolean;
-  contentType?: 'CLO' | 'PLO' | 'SYLLABUS' | 'COURSE_DESCRIPTION' | 'PREREQUISITES' | 'ASSESSMENT' | 'GENERAL' | string;
+  contentType?: 'CLO' | 'PLO' | 'PEO' | 'SYLLABUS' | 'COURSE_DESCRIPTION' | 'PREREQUISITES' | 'ASSESSMENT' | 'GENERAL' | string;
+  metadata?: Record<string, any>;
+  onApplyParsed?: (parsed: { rawHtml: string; mucTieuChung?: string; peos?: string[] }) => void;
 }
 
 export default function RichtextEditor({ 
@@ -55,7 +57,9 @@ export default function RichtextEditor({
   disabled,
   minHeight = 220,
   error = false,
-  contentType = 'GENERAL'
+  contentType = 'GENERAL',
+  metadata,
+  onApplyParsed
 }: RichtextEditorProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
@@ -158,16 +162,15 @@ export default function RichtextEditor({
     setHasCompletedStream(false);
 
     try {
-      const token = localStorage.getItem('euni_access_token');
-      const response = await fetch('/api/ai/generate-stream', {
+      const response = await fetchWithTokenRefresh('/api/ai/generate-stream', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ 
           prompt: finalPrompt,
-          contentType: contentType || 'GENERAL'
+          contentType: contentType || 'GENERAL',
+          metadata: metadata || {}
         }),
       });
 
@@ -175,54 +178,109 @@ export default function RichtextEditor({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let accumulated = '';
+      let fullParsedText = '';
       let buffer = '';
+
+      // Queue for smooth typewriter pacing
+      let charQueue = '';
+      let displayedLength = 0;
+      let streamFinished = false;
+
+      // Typewriter timer: reveals 3-6 characters every 15ms for smooth 60fps streaming
+      const timer = setInterval(() => {
+        if (displayedLength < charQueue.length) {
+          // Accelerate if queue is getting long (>100 chars queued)
+          const remaining = charQueue.length - displayedLength;
+          const step = remaining > 200 ? 12 : remaining > 80 ? 6 : 3;
+          displayedLength = Math.min(displayedLength + step, charQueue.length);
+          setStreamedText(charQueue.slice(0, displayedLength));
+        } else if (streamFinished) {
+          clearInterval(timer);
+          setStreamedText(charQueue);
+          setHasCompletedStream(true);
+          setIsGenerating(false);
+        }
+      }, 15);
+
       while (true) {
         const { done, value: chunk } = await reader.read();
         if (done) break;
         buffer += decoder.decode(chunk, { stream: true });
         
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep partial line in buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (trimmed.startsWith('data:')) {
             const dataContent = line.slice(line.indexOf('data:') + 5);
-            accumulated += dataContent;
+            fullParsedText += dataContent;
           } else if (trimmed && !trimmed.startsWith(':')) {
-            accumulated += line;
+            fullParsedText += line;
           }
         }
-        setStreamedText(accumulated);
+        charQueue = fullParsedText;
       }
 
       if (buffer.trim()) {
         if (buffer.startsWith('data:')) {
-          accumulated += buffer.slice(buffer.indexOf('data:') + 5);
+          fullParsedText += buffer.slice(buffer.indexOf('data:') + 5);
         } else {
-          accumulated += buffer;
+          fullParsedText += buffer;
         }
-        setStreamedText(accumulated);
+        charQueue = fullParsedText;
       }
 
-      setHasCompletedStream(true);
+      streamFinished = true;
+
     } catch (err) {
       console.error('AI Generate Error:', err);
-    } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const parsePeoContent = (html: string) => {
+    if (typeof window === 'undefined') return { rawHtml: html };
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      const pElements = Array.from(doc.querySelectorAll('p'));
+      const mucTieuParas = pElements.filter(p => !p.textContent?.toLowerCase().includes('mục tiêu cụ thể'));
+      const mucTieuChung = mucTieuParas.map(p => p.outerHTML).join('').trim();
+
+      const liElements = Array.from(doc.querySelectorAll('li'));
+      const peos = liElements.map(li => {
+        let text = li.textContent || '';
+        text = text.replace(/^PEO\s*\d+\s*[:\.\-]\s*/i, '').trim();
+        return text;
+      }).filter(t => t.length > 0);
+
+      return { rawHtml: html, mucTieuChung, peos };
+    } catch (err) {
+      return { rawHtml: html };
     }
   };
 
   const handleApplyContent = (mode: 'append' | 'replace') => {
     if (!streamedText) return;
+    const parsed = parsePeoContent(streamedText);
+
     let newValue = value || '';
-    if (mode === 'replace') {
+    if (contentType?.toUpperCase() === 'PEO' && parsed.mucTieuChung && mode === 'replace') {
+      newValue = parsed.mucTieuChung;
+    } else if (mode === 'replace') {
       newValue = streamedText;
     } else {
       newValue = newValue ? `${newValue}\n${streamedText}` : streamedText;
     }
+
     onChange(newValue);
+
+    if (onApplyParsed) {
+      onApplyParsed(parsed);
+    }
+
     setIsAiOpen(false);
     setStreamedText('');
     setHasCompletedStream(false);
@@ -231,6 +289,7 @@ export default function RichtextEditor({
 
   const getContextLabel = () => {
     switch (contentType?.toUpperCase()) {
+      case 'PEO': return 'Mục tiêu đào tạo (PEO)';
       case 'CLO': return 'Chuẩn đầu ra (CLO)';
       case 'PLO': return 'Chuẩn đầu ra (PLO)';
       case 'SYLLABUS': return 'Đề cương môn học';
@@ -243,6 +302,12 @@ export default function RichtextEditor({
 
   const getQuickPrompts = () => {
     switch (contentType?.toUpperCase()) {
+      case 'PEO':
+        return [
+          "Soạn Mục tiêu chung & các PEO cụ thể cho chương trình đào tạo",
+          "Bổ sung PEO về năng lực quản lý, đạo đức nghề nghiệp & lãnh đạo",
+          "Tối ưu PEO định hướng phát triển sự nghiệp 3-5 năm sau tốt nghiệp"
+        ];
       case 'CLO':
         return [
           "Xây dựng bộ CLO theo thang đo Bloom (Nhớ, Hiểu, Vận dụng, Phân tích...)",

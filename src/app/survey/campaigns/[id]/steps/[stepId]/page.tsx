@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button, Typography, Space, Tag, Breadcrumb, Card, message, Spin, Skeleton
@@ -9,9 +9,15 @@ import {
   ArrowLeft, Save, Edit, ChevronLeft, FileText, CheckCircle2, Clock, AlertCircle
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import ActionBar from '@/components/common/ActionBar';
 import { surveyCampaignService } from '@/services/surveyCampaignService';
-import { S2_PLO_Renderer, S5_CLO_Renderer, S6_MATRIX_Renderer } from '@/components/survey/StepRenderers';
+import { 
+  S1_KHAO_SAT_NHU_CAU_Renderer, 
+  S2_PLO_Renderer, 
+  S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer,
+  S5_CLO_Renderer, 
+  S6_MATRIX_Renderer 
+} from '@/components/survey/StepRenderers';
+import { S2PLORef } from '@/components/survey/renderers/S2PLORenderer';
 
 const { Title, Text } = Typography;
 
@@ -32,6 +38,8 @@ export default function SurveyStepPage() {
   const [prerequisiteLocked, setPrerequisiteLocked] = useState(false);
   const [prerequisiteStepName, setPrerequisiteStepName] = useState('');
   const [canEditRole, setCanEditRole] = useState(true);
+
+  const s2Ref = useRef<S2PLORef | null>(null);
 
   const fetchData = async () => {
     try {
@@ -128,27 +136,45 @@ export default function SurveyStepPage() {
     fetchData();
   }, [id, stepId]);
 
-  const handleSave = async () => {
+  const handleSave = async (targetStatus: string = 'COMPLETED') => {
+    const screenCode = step?.configuration?.screenCode;
+    const currentStepDbId = step?.id || stepId;
+
+    if (targetStatus === 'COMPLETED') {
+      if (screenCode === 'S2_PLO' && s2Ref.current) {
+        const isValid = s2Ref.current.validate();
+        if (!isValid) {
+          message.error('Vui lòng điền đầy đủ các thông tin bắt buộc trước khi lưu');
+          return;
+        }
+      }
+    }
+
     try {
       setIsSaving(true);
-      const screenCode = step?.configuration?.screenCode;
-      const currentStepDbId = step?.id || stepId;
+      let dataToSave = formData;
+      if (screenCode === 'S2_PLO' && s2Ref.current) {
+        const latest = s2Ref.current.getData();
+        if (latest) {
+          dataToSave = latest;
+        }
+      }
 
       if (screenCode === 'S5_CLO') {
-        if (formData && typeof formData === 'object') {
-          if (formData.courseId) {
+        if (dataToSave && typeof dataToSave === 'object') {
+          if (dataToSave.courseId) {
             // Single course object in formData
             await surveyCampaignService.saveCourseDetail(
               id as string,
-              formData.courseId,
-              formData,
-              'COMPLETED',
+              dataToSave.courseId,
+              dataToSave,
+              targetStatus,
               currentStepDbId
             );
-            message.success(`Đã lưu đề cương học phần [${formData.courseCode || formData.courseId}]`);
+            message.success(`Đã lưu đề cương học phần [${dataToSave.courseCode || dataToSave.courseId}]`);
           } else {
             // Map of courses: call saveCourseDetail API for each course individually
-            const entries = Object.entries(formData);
+            const entries = Object.entries(dataToSave);
             let savedCount = 0;
             for (const [cId, cData] of entries) {
               if (cData && typeof cData === 'object' && (cData as any).courseId) {
@@ -156,7 +182,7 @@ export default function SurveyStepPage() {
                   id as string,
                   (cData as any).courseId || cId,
                   cData,
-                  'COMPLETED',
+                  targetStatus,
                   currentStepDbId
                 );
                 savedCount++;
@@ -169,12 +195,12 @@ export default function SurveyStepPage() {
             }
           }
         }
-        // Also update step status to COMPLETED
-        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, formData);
+        // Also update step status
+        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, dataToSave, targetStatus);
       } else {
         // Default: save step-level result data
-        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, formData);
-        message.success('Đã lưu thông tin bước khảo sát');
+        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, dataToSave, targetStatus);
+        message.success(targetStatus === 'COMPLETED' ? 'Đã lưu thông tin bước khảo sát' : 'Đã lưu bản nháp bước khảo sát');
       }
 
       setIsEdit(false);
@@ -190,8 +216,21 @@ export default function SurveyStepPage() {
     const screenCode = step?.configuration?.screenCode;
 
     switch (screenCode) {
+      case 'S1_KHAO_SAT_NHU_CAU':
+        return (
+          <S1_KHAO_SAT_NHU_CAU_Renderer
+            step={step}
+            readonly={!isEdit}
+            data={formData}
+            onChange={setFormData}
+            onRefreshStep={fetchData}
+          />
+        );
       case 'S2_PLO':
-        return <S2_PLO_Renderer step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
+        return <S2_PLO_Renderer ref={s2Ref} step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
+      case 'S3_XacDinhCauTruc_KhoiLuongKienThuc':
+      case 'S3_STRUCTURE':
+        return <S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
       case 'S5_CLO':
         return <S5_CLO_Renderer step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
       case 'S6_MATRIX':
@@ -240,7 +279,9 @@ export default function SurveyStepPage() {
     );
   }
 
-  const hasActions = (campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole) || isEdit;
+  const isStepCompleted = (step?.status || '').toUpperCase() === 'COMPLETED';
+  const hasActions =
+    (campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole) || isEdit;
 
   return (
     <AppShell>
@@ -257,7 +298,7 @@ export default function SurveyStepPage() {
         <div className="flex items-center justify-between bg-white p-5 rounded-md border border-slate-200/80 shadow-none">
           <div className="flex items-center gap-4">
             <div>
-              <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                 <Title level={2} className="!mb-0 text-slate-800 font-bold tracking-tight text-xl">
                   {step?.stepName}
                 </Title>
@@ -271,7 +312,7 @@ export default function SurveyStepPage() {
                       </div>
                     );
                   }
-                  if (status === 'ACTIVE') {
+                  if (status === 'ACTIVE' || status === 'IN_PROGRESS') {
                     return (
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm bg-blue-50 text-blue-600 font-semibold uppercase text-[10px] whitespace-nowrap">
                         <Clock size={12} className="flex-shrink-0" />
@@ -287,12 +328,60 @@ export default function SurveyStepPage() {
                   );
                 })()}
               </div>
-              <Text className="text-slate-400 font-medium flex items-center gap-2 text-xs">
-                <FileText size={14} />
-                Mã màn hình: {step?.configuration?.screenCode}
-              </Text>
             </div>
           </div>
+          {/* Top Action Buttons */}
+          {hasActions && (
+            <div className="flex items-center gap-2.5">
+              {campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole ? (
+                <Button
+                  type="primary"
+                  icon={<Edit size={14} />}
+                  onClick={() => setIsEdit(true)}
+                  className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
+                >
+                  Chỉnh sửa
+                </Button>
+              ) : isEdit ? (
+                <Space size="small">
+                  <Button
+                    onClick={() => {
+                      if (step?.status === 'DRAFT' && !formData) {
+                        router.push(`/survey/campaigns/${id}`);
+                      } else {
+                        setIsEdit(false);
+                      }
+                    }}
+                    className="rounded-lg text-xs font-medium h-9 px-4"
+                  >
+                    Hủy bỏ
+                  </Button>
+                  {step?.configuration?.screenCode !== 'S1_KHAO_SAT_NHU_CAU' && (
+                    <>
+                      {step?.status !== 'COMPLETED' && (
+                        <Button
+                          onClick={() => handleSave('IN_PROGRESS')}
+                          loading={isSaving}
+                          className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:border-blue-500 bg-white"
+                        >
+                          Lưu bản nháp
+                        </Button>
+                      )}
+                      <Button
+                        type="primary"
+                        icon={<Save size={14} />}
+                        loading={isSaving}
+                        onClick={() => handleSave('COMPLETED')}
+                        className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
+                      >
+                        {step?.status === 'COMPLETED' ? 'Lưu cập nhật' : 'Hoàn thành bước'}
+                      </Button>
+                    </>
+                  )}
+                </Space>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {prerequisiteLocked && (
@@ -301,7 +390,7 @@ export default function SurveyStepPage() {
             <div>
               <Text strong className="text-amber-900 block font-bold text-base">Bước này chưa được phép thực hiện!</Text>
               <Text className="text-amber-700 text-sm font-medium">
-                Theo quy trình, bạn cần phải hoàn thành bước <strong>"{prerequisiteStepName}"</strong> trước khi có thể mở khóa và chỉnh sửa bước này.
+                Theo quy trình, bạn cần phải hoàn thành bước <strong>&quot;{prerequisiteStepName}&quot;</strong> trước khi có thể mở khóa và chỉnh sửa bước này.
               </Text>
             </div>
           </div>
@@ -323,48 +412,6 @@ export default function SurveyStepPage() {
         <div className="bg-white rounded-md border border-slate-200/80 shadow-none overflow-hidden p-6 min-h-0 flex-1">
           {renderContent()}
         </div>
-
-        {/* Floating Bottom Action Bar */}
-        {hasActions && (
-          <ActionBar
-            actions={
-              campaign?.status !== 'APPROVED' && !isEdit && !prerequisiteLocked && canEditRole
-                ? [
-                    {
-                      key: 'edit',
-                      label: 'Chỉnh sửa',
-                      type: 'primary',
-                      icon: <Edit size={12} />,
-                      onClick: () => setIsEdit(true),
-                    },
-                  ]
-                : isEdit
-                ? [
-                    {
-                      key: 'cancel',
-                      label: 'Hủy bỏ',
-                      type: 'default',
-                      onClick: () => {
-                        if (step?.status === 'DRAFT' && !formData) {
-                          router.push(`/survey/campaigns/${id}`);
-                        } else {
-                          setIsEdit(false);
-                        }
-                      },
-                    },
-                    {
-                      key: 'save',
-                      label: 'Lưu thông tin',
-                      type: 'primary',
-                      loading: isSaving,
-                      icon: <Save size={12} />,
-                      onClick: handleSave,
-                    },
-                  ]
-                : undefined
-            }
-          />
-        )}
       </div>
 
       <style jsx global>{`

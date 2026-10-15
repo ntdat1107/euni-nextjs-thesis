@@ -20,7 +20,6 @@ import {
   Divider
 } from 'antd';
 import { 
-  ShieldCheck, 
   Plus, 
   Trash2,
   Search,
@@ -31,62 +30,30 @@ import { Role } from '@/services/rbacService';
 import { useRBAC } from '@/hooks/useRBAC';
 import { useUsers } from '@/hooks/useUsers';
 import TableSkeleton from '@/components/ui/TableSkeleton';
+import { SIDEBAR_PAGES, NAV_PAGES, NavPageItem } from '@/constants/navigationPages';
 
-const { Title, Text, Paragraph } = Typography;
-
-export interface SidebarPageItem {
-  id: string;
-  name: string;
-  category: string;
-  path: string;
-}
-
-export const SIDEBAR_PAGES: SidebarPageItem[] = [
-  { id: 'dashboard', name: 'Bảng điều khiển', category: 'Tổng quan', path: '/' },
-  { id: 'workflow-templates', name: 'Mẫu quy trình', category: 'Quy trình', path: '/workflow/templates' },
-  { id: 'workflow-master-steps', name: 'Kho bước mẫu', category: 'Quy trình', path: '/workflow/master-steps' },
-  { id: 'majors', name: 'Ngành học', category: 'Dữ liệu gốc', path: '/master-data/majors' },
-  { id: 'programs', name: 'Chương trình', category: 'Dữ liệu gốc', path: '/master-data/programs' },
-  { id: 'subjects', name: 'Học phần', category: 'Dữ liệu gốc', path: '/master-data/subjects' },
-  { id: 'survey-campaigns', name: 'Đợt khảo sát', category: 'Khảo sát', path: '/survey/campaigns' },
-  { id: 'users', name: 'Quản lý người dùng', category: 'Hệ thống', path: '/admin/users' },
-  { id: 'rbac', name: 'Phân quyền (RBAC)', category: 'Hệ thống', path: '/admin/rbac' },
-  { id: 'profile', name: 'Hồ sơ người dùng', category: 'Hệ thống', path: '/profile' },
-];
+const { Title, Text } = Typography;
 
 export type PermissionState = Record<string, Record<string, { view: boolean; createUpdate: boolean }>>;
 
 function getDefaultPagePermissions(roles: Role[]): PermissionState {
   const initialMap: PermissionState = {};
 
-  SIDEBAR_PAGES.forEach(page => {
+  SIDEBAR_PAGES.forEach((page) => {
     initialMap[page.id] = {};
-    roles.forEach(role => {
+    const navItem = NAV_PAGES.find((p) => p.id === page.id);
+
+    roles.forEach((role) => {
       const code = role.code.replace(/^ROLE_/, '').toUpperCase();
       let view = false;
       let createUpdate = false;
 
-      if (code === 'ADMIN' || code === 'DTDH') {
+      if (code === 'ADMIN') {
         view = true;
         createUpdate = true;
-      } else if (code === 'DEAN') {
-        view = ['dashboard', 'workflow-templates', 'workflow-master-steps', 'survey-campaigns', 'subjects', 'programs', 'majors', 'profile'].includes(page.id);
-        createUpdate = ['survey-campaigns', 'subjects', 'programs', 'majors'].includes(page.id);
-      } else if (code === 'HEAD_DEPT' || code === 'LECTURER') {
-        view = ['dashboard', 'subjects', 'programs', 'majors', 'profile'].includes(page.id);
-        createUpdate = ['subjects'].includes(page.id);
-      } else if (code === 'COMMITTEE') {
-        view = ['dashboard', 'workflow-templates', 'workflow-master-steps', 'subjects', 'profile'].includes(page.id);
-        createUpdate = ['workflow-templates'].includes(page.id);
-      } else if (code === 'COUNCIL') {
-        view = ['dashboard', 'workflow-templates', 'subjects', 'programs', 'profile'].includes(page.id);
-        createUpdate = false;
-      } else if (code === 'QA') {
-        view = ['dashboard', 'survey-campaigns', 'subjects', 'programs', 'profile'].includes(page.id);
-        createUpdate = ['survey-campaigns'].includes(page.id);
-      } else {
-        view = true;
-        createUpdate = false;
+      } else if (navItem) {
+        view = navItem.defaultRoles.includes(code);
+        createUpdate = navItem.createUpdateRoles ? navItem.createUpdateRoles.includes(code) : false;
       }
 
       initialMap[page.id][code] = { view, createUpdate };
@@ -133,9 +100,9 @@ function RBACContent() {
       try {
         const savedPerms = JSON.parse(savedStr);
         const merged: PermissionState = { ...defaultPerms };
-        Object.keys(savedPerms).forEach(pageId => {
+        Object.keys(savedPerms).forEach((pageId) => {
           if (!merged[pageId]) merged[pageId] = {};
-          Object.keys(savedPerms[pageId]).forEach(roleCode => {
+          Object.keys(savedPerms[pageId]).forEach((roleCode) => {
             merged[pageId][roleCode] = savedPerms[pageId][roleCode];
           });
         });
@@ -159,7 +126,7 @@ function RBACContent() {
     const normalizedCode = roleCode.replace(/^ROLE_/, '').toUpperCase();
     if (normalizedCode === 'ADMIN') return; // Admin always has full access
 
-    setPagePerms(prev => {
+    setPagePerms((prev) => {
       const pagePerm = prev[pageId] || {};
       const currentRolePerm = pagePerm[normalizedCode] || { view: false, createUpdate: false };
 
@@ -180,9 +147,9 @@ function RBACContent() {
           ...pagePerm,
           [normalizedCode]: {
             view: newView,
-            createUpdate: newCU
-          }
-        }
+            createUpdate: newCU,
+          },
+        },
       };
     });
   };
@@ -216,14 +183,14 @@ function RBACContent() {
       okText: 'Xóa',
       okType: 'danger',
       cancelText: 'Hủy',
-      onOk: () => deleteRole(id)
+      onOk: () => deleteRole(id),
     });
   };
 
   const filteredRoles = useMemo(() => {
     if (!searchText) return roles;
     const query = searchText.toLowerCase();
-    return roles.filter(r => 
+    return roles.filter((r) => 
       r.name.toLowerCase().includes(query) || 
       r.code.toLowerCase().includes(query)
     );
@@ -302,7 +269,7 @@ function RBACContent() {
               placeholder="Tìm kiếm vai trò theo tên hay mã..."
               prefix={<Search className="w-4 h-4 text-slate-400" />}
               value={searchText}
-              onChange={e => setSearchText(e.target.value)}
+              onChange={(e) => setSearchText(e.target.value)}
               className="max-w-md rounded-xl"
             />
           </div>
@@ -333,9 +300,11 @@ function RBACContent() {
                 width: 220,
                 render: (_, record) => {
                   const normalized = record.code.replace(/^ROLE_/, '').toUpperCase();
-                  if (normalized === 'ADMIN') return <span className="font-semibold text-emerald-600">10 / 10 trang (Tất cả)</span>;
+                  if (normalized === 'ADMIN') {
+                    return <span className="font-semibold text-emerald-600">{SIDEBAR_PAGES.length} / {SIDEBAR_PAGES.length} trang (Tất cả)</span>;
+                  }
 
-                  const count = SIDEBAR_PAGES.filter(p => pagePerms[p.id]?.[normalized]?.view).length;
+                  const count = SIDEBAR_PAGES.filter((p) => pagePerms[p.id]?.[normalized]?.view).length;
                   return (
                     <span className="font-semibold text-slate-700">
                       {count} / {SIDEBAR_PAGES.length} trang
@@ -348,7 +317,7 @@ function RBACContent() {
                 key: 'usersCount', 
                 width: 200,
                 render: (_, record) => {
-                  const count = users.filter(u => u.roles.includes(record.code)).length;
+                  const count = users.filter((u) => u.roles.includes(record.code)).length;
                   return <span className="font-medium text-slate-600">{count} người dùng</span>;
                 } 
               },
@@ -460,7 +429,7 @@ function RBACContent() {
                     title: 'Trang hệ thống',
                     dataIndex: 'name',
                     key: 'name',
-                    render: (_: string, record: SidebarPageItem) => (
+                    render: (_: string, record: any) => (
                       <div className="py-1">
                         <div className="font-bold text-slate-900 text-xs">{record.name}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -477,7 +446,7 @@ function RBACContent() {
                     key: 'permissions',
                     width: 220,
                     align: 'right' as const,
-                    render: (_: any, record: SidebarPageItem) => {
+                    render: (_: any, record: any) => {
                       const current = pagePerms[record.id]?.[activeRoleCode] || { view: false, createUpdate: false };
                       const isAdmin = activeRoleCode === 'ADMIN';
 

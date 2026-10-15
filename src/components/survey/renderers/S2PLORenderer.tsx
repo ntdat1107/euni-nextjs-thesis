@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useParams } from 'next/navigation';
 import { Button, Input, Checkbox, Typography, Divider } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { surveyCampaignService } from '@/services/surveyCampaignService';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -37,21 +40,31 @@ interface S2PLOData {
   maTranMucTieuVaCDR?: string;
 }
 
+export interface S2PLORef {
+  validate: () => boolean;
+  getData: () => S2PLOData;
+}
+
 interface S2PLORendererProps {
   data?: any; 
   readonly?: boolean;
   onChange?: (data: S2PLOData) => void;
 }
 
-export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
+export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
   data,
   readonly = false,
   onChange,
-}) => {
+}, ref) => {
+  const params = useParams();
+  const campaignId = params?.id as string;
+
   const isLocalChangeRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const debouncedTriggerRef = useRef<((targetState: S2PLOData) => void) | null>(null);
 
+  const [campaignMeta, setCampaignMeta] = useState<Record<string, any>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [state, setState] = useState<S2PLOData>({
     mucTieuHeadingHtml: '<p><b>1. Mục tiêu</b></p>',
     chuanDauRaHeadingHtml: '<p><b>2. Chuẩn đầu ra (PLO)</b></p>',
@@ -59,6 +72,114 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
     plos: [{ content: '', pis: [{ content: '' }, { content: '' }, { content: '' }] }],
     matrix: [],
   });
+
+  const clearError = (key: string) => {
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  useImperativeHandle(ref, () => ({
+    validate: () => {
+      const newErrors: Record<string, string> = {};
+      let firstInvalidId: string | null = null;
+
+      const hasText = (html: string) => (html || '').replace(/<[^>]*>/g, '').trim().length > 0;
+
+      if (!hasText(state.mucTieuHeadingHtml)) {
+        newErrors['mucTieuHeading'] = 'Vui lòng nhập đề mục mục tiêu';
+        if (!firstInvalidId) firstInvalidId = 'muc-tieu-heading-editor';
+      }
+
+      if (!state.peos || state.peos.length === 0) {
+        newErrors['peo-0'] = 'Vui lòng thêm ít nhất một PEO';
+        if (!firstInvalidId) firstInvalidId = 'peo-input-0';
+      } else {
+        state.peos.forEach((peo, idx) => {
+          if (!peo.content || !peo.content.trim()) {
+            newErrors[`peo-${idx}`] = `Vui lòng nhập nội dung ${getPeoCode(idx)}`;
+            if (!firstInvalidId) firstInvalidId = `peo-input-${idx}`;
+          }
+        });
+      }
+
+      if (!hasText(state.chuanDauRaHeadingHtml)) {
+        newErrors['chuanDauRaHeading'] = 'Vui lòng nhập đề mục chuẩn đầu ra';
+        if (!firstInvalidId) firstInvalidId = 'chuan-dau-ra-heading-editor';
+      }
+
+      if (!state.plos || state.plos.length === 0) {
+        newErrors['plo-0'] = 'Vui lòng thêm ít nhất một PLO';
+        if (!firstInvalidId) firstInvalidId = 'plo-input-0';
+      } else {
+        state.plos.forEach((plo, ploIdx) => {
+          if (!plo.content || !plo.content.trim()) {
+            newErrors[`plo-${ploIdx}`] = `Vui lòng nhập nội dung ${getPloCode(ploIdx)}`;
+            if (!firstInvalidId) firstInvalidId = `plo-input-${ploIdx}`;
+          }
+          if (!plo.pis || plo.pis.length === 0) {
+            newErrors[`pi-${ploIdx}-0`] = `Vui lòng thêm ít nhất một PI cho ${getPloCode(ploIdx)}`;
+            if (!firstInvalidId) firstInvalidId = `pi-input-${ploIdx}-0`;
+          } else {
+            plo.pis.forEach((pi, piIdx) => {
+              if (!pi.content || !pi.content.trim()) {
+                newErrors[`pi-${ploIdx}-${piIdx}`] = `Vui lòng nhập nội dung ${getPiCode(ploIdx, piIdx)}`;
+                if (!firstInvalidId) firstInvalidId = `pi-input-${ploIdx}-${piIdx}`;
+              }
+            });
+          }
+        });
+      }
+
+      setErrors(newErrors);
+
+      if (Object.keys(newErrors).length > 0) {
+        if (firstInvalidId) {
+          setTimeout(() => {
+            const el = document.getElementById(firstInvalidId!);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.focus();
+            }
+          }, 50);
+        }
+        return false;
+      }
+
+      return true;
+    },
+    getData: () => {
+      const mucTieu = buildMucTieuHtml(state);
+      const chuanDauRa = buildChuanDauRaHtml(state);
+      const maTranMucTieuVaCDR = buildMatrixHtml(state);
+      return { ...state, mucTieu, chuanDauRa, maTranMucTieuVaCDR };
+    }
+  }));
+
+  useEffect(() => {
+    if (!campaignId) return;
+    const loadCampaignMeta = async () => {
+      try {
+        const campaign = await surveyCampaignService.getById(campaignId);
+        if (campaign) {
+          setCampaignMeta({
+            'Tên chiến dịch / Đợt rà soát': campaign.name,
+            'Mã đợt': campaign.code,
+            'Tên chương trình đào tạo': campaign.programName || campaign.program?.name,
+            'Ngành đào tạo': campaign.program?.major?.name || campaign.programName || campaign.name,
+            'Khoa quản lý': campaign.program?.faculty?.name,
+            'Trình độ đào tạo': campaign.program?.degreeLevel || 'Đại học'
+          });
+        }
+      } catch (err) {
+        console.error('[S2PLO] Fetch campaign metadata error:', err);
+      }
+    };
+    loadCampaignMeta();
+  }, [campaignId]);
 
   const getPeoCode = (idx: number) => `PEO${idx + 1}`;
   const getPloCode = (idx: number) => `PLO${idx + 1}`;
@@ -203,6 +324,9 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
   };
 
   const updatePEO = (idx: number, content: string) => {
+    if (content.trim()) {
+      clearError(`peo-${idx}`);
+    }
     const newPeos = state.peos.map((peo, i) => i === idx ? { ...peo, content } : peo);
     handleStateChange({ peos: newPeos }, false);
   };
@@ -218,6 +342,9 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
   };
 
   const updatePLO = (idx: number, content: string) => {
+    if (content.trim()) {
+      clearError(`plo-${idx}`);
+    }
     const newPlos = state.plos.map((plo, i) => i === idx ? { ...plo, content } : plo);
     handleStateChange({ plos: newPlos }, false);
   };
@@ -230,15 +357,19 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
   };
 
   const removePI = (ploIdx: number, piIdx: number) => {
-    const newPlos = state.plos.map((plo, idx) => {
-      if (idx !== ploIdx) return plo;
-      const nextPis = plo.pis.filter((_, pIdx) => pIdx !== piIdx);
-      return { ...plo, pis: nextPis.length ? nextPis : [{ content: '' }] };
-    });
-    handleStateChange({ plos: newPlos }, true);
+    handleStateChange({
+      plos: state.plos.map((plo, idx) => {
+        if (idx !== ploIdx) return plo;
+        const nextPis = plo.pis.filter((_, pIdx) => pIdx !== piIdx);
+        return { ...plo, pis: nextPis.length ? nextPis : [{ content: '' }] };
+      })
+    }, true);
   };
 
   const updatePI = (ploIdx: number, piIdx: number, content: string) => {
+    if (content.trim()) {
+      clearError(`pi-${ploIdx}-${piIdx}`);
+    }
     const newPlos = state.plos.map((plo, idx) => {
       if (idx !== ploIdx) return plo;
       const nextPis = plo.pis.map((pi, pIdx) => pIdx === piIdx ? { ...pi, content } : pi);
@@ -264,13 +395,35 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
             <span>1. Đề mục mục tiêu (mục 1)</span>
             <span className="text-red-500">*</span>
           </div>
-          <RichtextEditor
-            value={state.mucTieuHeadingHtml}
-            disabled={readonly}
-            contentType="PLO"
-            minHeight={120}
-            onChange={(val) => handleStateChange({ mucTieuHeadingHtml: val }, false)}
-          />
+          <div id="muc-tieu-heading-editor">
+            <RichtextEditor
+              value={state.mucTieuHeadingHtml}
+              disabled={readonly}
+              contentType="PEO"
+              metadata={campaignMeta}
+              minHeight={120}
+              onChange={(val) => {
+                clearError('mucTieuHeading');
+                handleStateChange({ mucTieuHeadingHtml: val }, false);
+              }}
+              onApplyParsed={(parsed) => {
+                if (parsed.peos && parsed.peos.length > 0) {
+                  const newPeos = parsed.peos.map(text => ({ content: text }));
+                  clearError('mucTieuHeading');
+                  handleStateChange({
+                    mucTieuHeadingHtml: parsed.mucTieuChung || state.mucTieuHeadingHtml,
+                    peos: newPeos
+                  }, true);
+                }
+              }}
+            />
+          </div>
+          {errors['mucTieuHeading'] && (
+            <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+              <AlertCircle size={13} className="shrink-0" />
+              <span>{errors['mucTieuHeading']}</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -279,15 +432,28 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
               <div className="w-16 pt-2 shrink-0">
                 <Text strong className="text-sm text-slate-800">{getPeoCode(idx)}</Text>
               </div>
-              <TextArea
-                value={peo.content}
-                disabled={readonly}
-                onChange={(e) => updatePEO(idx, e.target.value)}
-                onBlur={handleBlur}
-                placeholder="Nhập nội dung PEO..."
-                autoSize={{ minRows: 3 }}
-                className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
-              />
+              <div className="flex-1">
+                <TextArea
+                  id={`peo-input-${idx}`}
+                  value={peo.content}
+                  disabled={readonly}
+                  onChange={(e) => updatePEO(idx, e.target.value)}
+                  onBlur={handleBlur}
+                  placeholder="Nhập nội dung PEO..."
+                  autoSize={{ minRows: 3 }}
+                  className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
+                    errors[`peo-${idx}`]
+                      ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                      : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                  }`}
+                />
+                {errors[`peo-${idx}`] && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>{errors[`peo-${idx}`]}</span>
+                  </div>
+                )}
+              </div>
               {!readonly && (
                 <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removePEO(idx)} className="mt-1" />
               )}
@@ -310,13 +476,25 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
             <span>2. Đề mục chuẩn đầu ra (mục 2)</span>
             <span className="text-red-500">*</span>
           </div>
-          <RichtextEditor
-            value={state.chuanDauRaHeadingHtml}
-            disabled={readonly}
-            contentType="PLO"
-            minHeight={120}
-            onChange={(val) => handleStateChange({ chuanDauRaHeadingHtml: val }, false)}
-          />
+          <div id="chuan-dau-ra-heading-editor">
+            <RichtextEditor
+              value={state.chuanDauRaHeadingHtml}
+              disabled={readonly}
+              contentType="PLO"
+              metadata={campaignMeta}
+              minHeight={120}
+              onChange={(val) => {
+                clearError('chuanDauRaHeading');
+                handleStateChange({ chuanDauRaHeadingHtml: val }, false);
+              }}
+            />
+          </div>
+          {errors['chuanDauRaHeading'] && (
+            <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+              <AlertCircle size={13} className="shrink-0" />
+              <span>{errors['chuanDauRaHeading']}</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -327,15 +505,28 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                 <Text strong className="text-sm text-slate-800">{getPloCode(ploIdx)}</Text>
                 {!readonly && <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removePLO(ploIdx)} />}
               </div>
-              <TextArea
-                value={plo.content}
-                disabled={readonly}
-                onChange={(e) => updatePLO(ploIdx, e.target.value)}
-                onBlur={handleBlur}
-                placeholder="Nhập nội dung PLO..."
-                autoSize={{ minRows: 2 }}
-                className="w-full rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
-              />
+              <div className="w-full">
+                <TextArea
+                  id={`plo-input-${ploIdx}`}
+                  value={plo.content}
+                  disabled={readonly}
+                  onChange={(e) => updatePLO(ploIdx, e.target.value)}
+                  onBlur={handleBlur}
+                  placeholder="Nhập nội dung PLO..."
+                  autoSize={{ minRows: 2 }}
+                  className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
+                    errors[`plo-${ploIdx}`]
+                      ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                      : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                  }`}
+                />
+                {errors[`plo-${ploIdx}`] && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>{errors[`plo-${ploIdx}`]}</span>
+                  </div>
+                )}
+              </div>
 
               <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200 space-y-4 !mt-5">
                 <div className="border-b border-slate-150 pb-2">
@@ -347,15 +538,28 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
                       <div className="w-20 pt-2 shrink-0">
                         <Text strong className="text-xs text-slate-800">{getPiCode(ploIdx, piIdx)}</Text>
                       </div>
-                      <TextArea
-                        value={pi.content}
-                        disabled={readonly}
-                        onChange={(e) => updatePI(ploIdx, piIdx, e.target.value)}
-                        onBlur={handleBlur}
-                        placeholder="Nội dung PI..."
-                        autoSize={{ minRows: 2 }}
-                        className="flex-1 rounded-md border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default"
-                      />
+                      <div className="flex-1">
+                        <TextArea
+                          id={`pi-input-${ploIdx}-${piIdx}`}
+                          value={pi.content}
+                          disabled={readonly}
+                          onChange={(e) => updatePI(ploIdx, piIdx, e.target.value)}
+                          onBlur={handleBlur}
+                          placeholder="Nội dung PI..."
+                          autoSize={{ minRows: 2 }}
+                          className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
+                            errors[`pi-${ploIdx}-${piIdx}`]
+                              ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                              : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                          }`}
+                        />
+                        {errors[`pi-${ploIdx}-${piIdx}`] && (
+                          <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                            <AlertCircle size={13} className="shrink-0" />
+                            <span>{errors[`pi-${ploIdx}-${piIdx}`]}</span>
+                          </div>
+                        )}
+                      </div>
                       {!readonly && <Button type="text" danger size="small" icon={<DeleteOutlined className="text-xs" />} onClick={() => removePI(ploIdx, piIdx)} />}
                     </div>
                   ))}
@@ -445,6 +649,8 @@ export const S2PLORenderer: React.FC<S2PLORendererProps> = ({
       `}</style>
     </div>
   );
-};
+});
+
+S2PLORenderer.displayName = 'S2PLORenderer';
 
 export default S2PLORenderer;

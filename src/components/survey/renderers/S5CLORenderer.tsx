@@ -689,6 +689,13 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
                 value={currentSyllabus.knowledgeObjective || ''}
                 disabled={isReadonlySection}
                 contentType="CLO"
+                metadata={{
+                  'Tên học phần': currentCourse?.name,
+                  'Mã học phần': currentCourse?.code,
+                  'Số tín chỉ': currentCourse?.credits,
+                  'Môn tiên quyết': currentSyllabus.prerequisites,
+                  'Môn học trước': currentSyllabus.corequisites
+                }}
                 onChange={val => updateSyllabus({ knowledgeObjective: val })}
                 placeholder="Trình bày những kiến thức sinh viên tích lũy được sau khi hoàn thành môn học..."
               />
@@ -699,6 +706,13 @@ export const S5CLORenderer: React.FC<S5CLORendererProps> = ({
                 value={currentSyllabus.skillsObjective || ''}
                 disabled={isReadonlySection}
                 contentType="CLO"
+                metadata={{
+                  'Tên học phần': currentCourse?.name,
+                  'Mã học phần': currentCourse?.code,
+                  'Số tín chỉ': currentCourse?.credits,
+                  'Môn tiên quyết': currentSyllabus.prerequisites,
+                  'Môn học trước': currentSyllabus.corequisites
+                }}
                 onChange={val => updateSyllabus({ skillsObjective: val })}
                 placeholder="Trình bày các kỹ năng cứng và mềm sinh viên đạt được..."
               />

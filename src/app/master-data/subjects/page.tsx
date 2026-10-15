@@ -90,11 +90,11 @@ function CourseManagementContent() {
       key: 'course',
       render: (_: any, record: Course) => (
         <div className="flex items-center gap-3 py-1">
-          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100">
-            <Book className="w-5 h-5 text-indigo-600" />
+          <div className="w-10 h-10 flex-shrink-0 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100">
+            <Book className="w-5 h-5 text-indigo-600 flex-shrink-0" />
           </div>
-          <div>
-            <div className="font-bold text-slate-900">{record.name}</div>
+          <div className="min-w-0">
+            <div className="font-bold text-slate-900 truncate">{record.name}</div>
             <div className="text-xs text-slate-500 font-medium">Mã HP: {record.code}</div>
           </div>
         </div>
