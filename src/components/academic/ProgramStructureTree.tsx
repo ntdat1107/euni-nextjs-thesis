@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tree, Card, Button, Modal, Form, Input, InputNumber, Space, Typography, Tag, Tooltip, App, Empty } from 'antd';
-import { Plus, Edit2, Trash2, Folder, Layers, BookOpen, ChevronRight, GripVertical } from 'lucide-react';
-import { ProgramStructure, ProgramElectiveGroup } from '@/types/academic';
+import { Tree, Button, Modal, Form, Input, InputNumber, Typography, Tag, Tooltip, App, Empty } from 'antd';
+import { Plus, Edit2, Trash2, Layers, BookOpen, GripVertical } from 'lucide-react';
+import { ProgramStructure } from '@/types/academic';
 import { programService } from '@/services/programService';
+import ProgramElectiveGroupsModal from './ProgramElectiveGroupsModal';
+import { cn } from '@/lib/utils';
 
 const { Text, Title } = Typography;
 
@@ -30,10 +32,25 @@ export default function ProgramStructureTree({
   const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Group modal
-  const [groupForm] = Form.useForm();
-  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [targetStructureId, setTargetStructureId] = useState<number | null>(null);
+  // Elective groups management modal
+  const [manageStructureId, setManageStructureId] = useState<number | null>(null);
+  const [isElectiveModalOpen, setIsElectiveModalOpen] = useState(false);
+
+  // Keep fresh structure object for elective groups modal
+  const currentManageStructure = React.useMemo(() => {
+    if (!manageStructureId) return null;
+    const findInTree = (list: ProgramStructure[]): ProgramStructure | null => {
+      for (const item of list) {
+        if (item.id === manageStructureId) return item;
+        if (item.children) {
+          const found = findInTree(item.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return findInTree(structures);
+  }, [manageStructureId, structures]);
 
   // Helper tìm danh sách anh em ruột (cùng parentId)
   const getSiblings = (items: ProgramStructure[], pId: number | null): ProgramStructure[] => {
@@ -135,42 +152,14 @@ export default function ProgramStructureTree({
     }
   };
 
-  const handleOpenAddGroup = (structureId: number) => {
-    setTargetStructureId(structureId);
-    groupForm.resetFields();
-    groupForm.setFieldsValue({
-      minCredits: 6,
-      minCourses: 2
-    });
-    setIsGroupModalOpen(true);
-  };
-
-  const handleSaveGroup = async () => {
-    if (!targetStructureId) return;
-    try {
-      const values = await groupForm.validateFields();
-      if (!values.minCredits || Number(values.minCredits) <= 0) {
-        message.error('Số tín chỉ tối thiểu phải lớn hơn 0');
-        return;
-      }
-      await programService.addElectiveGroup(targetStructureId, {
-        ...values,
-        minCredits: Number(values.minCredits)
-      });
-      message.success('Thêm nhóm tự chọn thành công');
-      setIsGroupModalOpen(false);
-      onRefresh();
-    } catch (err: any) {
-      if (err?.errorFields) return;
-      message.error(err.response?.data?.message || 'Không thể lưu nhóm tự chọn');
-    }
+  const handleOpenManageGroups = (struct: ProgramStructure) => {
+    setManageStructureId(struct.id);
+    setIsElectiveModalOpen(true);
   };
 
   // Drag & Drop chỉ cho phép trong cùng 1 cấp (level)
   const allowDrop = ({ dropPosition, dragNode, dropNode }: any) => {
-    // Không cho phép thả lồng vào bên trong một node khác (đổi cấp độ)
     if (dropPosition === 0) return false;
-    // Chỉ cho phép thả giữa các node có cùng parentId
     return dragNode.parentId === dropNode.parentId;
   };
 
@@ -215,41 +204,68 @@ export default function ProgramStructureTree({
   // Convert structures into antd Tree data format
   const renderTreeData = (items: ProgramStructure[], parentId: number | null = null): any[] => {
     return items.map((item) => {
+      const groups = item.electiveGroups || [];
       return {
         key: item.id.toString(),
         parentId: parentId,
         title: (
-          <div className="flex items-center justify-between w-full py-1.5 px-2 hover:bg-slate-50/80 rounded-xl group transition-all">
-            <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-between w-full py-1.5 px-2 hover:bg-slate-50/80 rounded-xl group transition-all gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
               {!readOnly && (
-                <Tooltip title="Kéo thả để đổi thứ tự trong cùng cấp">
-                  <span className="p-1 -ml-1 text-slate-300 group-hover:text-slate-500 cursor-grab active:cursor-grabbing hover:bg-slate-100 rounded flex items-center">
+                <Tooltip title="Kéo thả để sắp xếp thứ tự cùng cấp">
+                  <span className="p-1 -ml-1 text-slate-300 group-hover:text-slate-500 cursor-grab active:cursor-grabbing hover:bg-slate-100 rounded flex items-center shrink-0">
                     <GripVertical size={14} />
                   </span>
                 </Tooltip>
               )}
-              <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+              <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 shrink-0">
                 {item.code}
               </span>
-              <span className="font-semibold text-slate-800 text-sm">
+              <span className="font-semibold text-slate-800 text-sm whitespace-nowrap">
                 {item.name}
               </span>
-              <Tag color={item.calculatedCredits >= item.creditRequired ? 'success' : 'processing'} className="text-[11px] rounded-full border-none px-2.5 font-medium">
+              <Tag color={item.calculatedCredits >= item.creditRequired ? 'success' : 'processing'} className="text-[11px] rounded-full border-none px-2.5 font-medium shrink-0 !mr-0">
                 {item.calculatedCredits || 0} / {item.creditRequired} TC
               </Tag>
-              {item.electiveGroups && item.electiveGroups.length > 0 && (
-                <div className="flex items-center gap-1.5 ml-1">
-                  {item.electiveGroups.map((eg) => (
-                    <Tag key={eg.id} color="purple" className="text-[10px] rounded-md border-none">
-                      {eg.name} (Tối thiểu: {eg.minCredits} TC)
-                    </Tag>
-                  ))}
-                </div>
+              {groups.length > 0 && (
+                <Tooltip
+                  title={
+                    <div className="text-xs space-y-1 py-1">
+                      <div className="font-bold border-b border-white/20 pb-1">
+                        Hướng chuyên sâu tự chọn ({groups.length}):
+                      </div>
+                      {groups.map((eg) => (
+                        <div key={eg.id} className="flex justify-between gap-3 text-[11px]">
+                          <span>• {eg.name}</span>
+                          <span className="text-purple-200">≥ {eg.minCredits} TC</span>
+                        </div>
+                      ))}
+                      {!readOnly && <div className="text-[10px] text-purple-300 italic pt-1">Nhấp để quản lý / sửa / xóa</div>}
+                    </div>
+                  }
+                >
+                  <Tag
+                    color="purple"
+                    className={cn(
+                      "text-[10px] rounded-full border-purple-200 bg-purple-50 text-purple-700 font-semibold px-2 py-0.5 shrink-0 flex items-center gap-1",
+                      !readOnly && "cursor-pointer hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                    )}
+                    onClick={(e) => {
+                      if (!readOnly) {
+                        e.stopPropagation();
+                        handleOpenManageGroups(item);
+                      }
+                    }}
+                  >
+                    <Layers size={11} className="text-purple-600 shrink-0" />
+                    <span>{groups.length} hướng tự chọn</span>
+                  </Tag>
+                </Tooltip>
               )}
             </div>
 
-            <div className="flex items-center gap-1 transition-opacity">
-              {onNavigateToCourses && (
+            <div className="flex items-center gap-1 shrink-0">
+              {!readOnly && onNavigateToCourses && (
                 <Tooltip title="Xem / phân bổ học phần vào khối này">
                   <Button
                     type="text"
@@ -277,14 +293,14 @@ export default function ProgramStructureTree({
                       className="cursor-pointer"
                     />
                   </Tooltip>
-                  <Tooltip title="Thêm nhóm tự chọn">
+                  <Tooltip title="Quản lý hướng tự chọn">
                     <Button
                       type="text"
                       size="small"
                       icon={<Layers size={14} className="text-purple-600" />}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleOpenAddGroup(item.id);
+                        handleOpenManageGroups(item);
                       }}
                       className="cursor-pointer"
                     />
@@ -334,8 +350,8 @@ export default function ProgramStructureTree({
 
   return (
     <div className="space-y-4">
-      {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <Title level={5} className="!mb-0 text-slate-800">Cây Cấu trúc Khối kiến thức</Title>
@@ -354,7 +370,7 @@ export default function ProgramStructureTree({
         </div>
 
         <div className="flex items-center gap-2">
-          {onNavigateToCourses && (
+          {!readOnly && onNavigateToCourses && (
             <Button
               type="default"
               icon={<BookOpen size={15} className="text-blue-600" />}
@@ -378,7 +394,7 @@ export default function ProgramStructureTree({
       </div>
 
       {/* Tree Content */}
-      <Card className="rounded-2xl border border-slate-200/90 shadow-2xs">
+      <div className="rounded-xl border border-slate-200/80 bg-white p-4">
         {structures.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -394,7 +410,7 @@ export default function ProgramStructureTree({
           <Tree
             showLine={{ showLeafIcon: false }}
             defaultExpandAll
-            draggable={!readOnly}
+            draggable={!readOnly ? { icon: false } : false}
             blockNode
             allowDrop={allowDrop}
             onDrop={handleDrop}
@@ -402,7 +418,7 @@ export default function ProgramStructureTree({
             className="font-medium text-slate-700 select-none"
           />
         )}
-      </Card>
+      </div>
 
       {/* Modal Thêm/Sửa Khối kiến thức */}
       <Modal
@@ -460,53 +476,14 @@ export default function ProgramStructureTree({
         </Form>
       </Modal>
 
-      {/* Modal Thêm Nhóm Tự chọn */}
-      <Modal
-        title="Thêm Nhóm Tự chọn chuyên sâu"
-        open={isGroupModalOpen}
-        onOk={handleSaveGroup}
-        onCancel={() => setIsGroupModalOpen(false)}
-        okText="Tạo nhóm"
-        cancelText="Hủy"
-        centered
-      >
-        <Form form={groupForm} layout="vertical" className="mt-4">
-          <Form.Item
-            name="name"
-            label={<span className="text-xs font-semibold text-slate-700">Tên nhóm tự chọn</span>}
-            rules={[{ required: true, message: 'Vui lòng nhập tên nhóm (Ví dụ: Nhóm AI & Big Data)' }]}
-          >
-            <Input placeholder="Ví dụ: Hướng Chuyên sâu Điện toán Đám mây & DevOps" className="rounded-xl h-10" />
-          </Form.Item>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item
-              name="minCredits"
-              label={<span className="text-xs font-semibold text-slate-700">Tối thiểu tín chỉ</span>}
-              rules={[
-                { required: true, message: 'Vui lòng nhập số tín chỉ' },
-                {
-                  validator: async (_, value) => {
-                    if (value === undefined || value === null || Number(value) <= 0) {
-                      return Promise.reject(new Error('Số tín chỉ tối thiểu phải lớn hơn 0'));
-                    }
-                    return Promise.resolve();
-                  }
-                }
-              ]}
-            >
-              <InputNumber min={1} className="w-full rounded-xl h-10" />
-            </Form.Item>
-
-            <Form.Item
-              name="minCourses"
-              label={<span className="text-xs font-semibold text-slate-700">Tối thiểu số môn</span>}
-            >
-              <InputNumber min={0} className="w-full rounded-xl h-10" />
-            </Form.Item>
-          </div>
-        </Form>
-      </Modal>
+      {/* Modal Quản lý Nhóm/Hướng Tự chọn */}
+      <ProgramElectiveGroupsModal
+        open={isElectiveModalOpen}
+        structure={currentManageStructure}
+        onClose={() => setIsElectiveModalOpen(false)}
+        onRefresh={onRefresh}
+        readOnly={readOnly}
+      />
     </div>
   );
 }

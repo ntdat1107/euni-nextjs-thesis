@@ -65,6 +65,14 @@ export const programService = {
     return api.post(`/programs/structures/${structureId}/elective-groups`, data);
   },
 
+  updateElectiveGroup: async (groupId: number | string, data: { name: string; minCredits: number; minCourses: number }): Promise<ProgramElectiveGroup> => {
+    return api.put(`/programs/structures/elective-groups/${groupId}`, data);
+  },
+
+  deleteElectiveGroup: async (groupId: number | string): Promise<void> => {
+    return api.delete(`/programs/structures/elective-groups/${groupId}`);
+  },
+
   // OBE & Course Matrix
   getObeMatrix: async (id: number | string): Promise<ProgramObeMatrixData> => {
     return api.get(`/programs/${id}/obe`);

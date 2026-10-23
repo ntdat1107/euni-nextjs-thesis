@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
 import {
   ClassicEditor,
@@ -50,6 +50,87 @@ interface RichtextEditorProps {
   onApplyParsed?: (parsed: { rawHtml: string; mucTieuChung?: string; peos?: string[] }) => void;
 }
 
+const CK_PLUGINS = [
+  Essentials, Undo, SelectAll, Paragraph, Heading,
+  Bold, Italic, Underline, Strikethrough, RemoveFormat,
+  FontSize, FontColor, FontBackgroundColor, Alignment,
+  List, ListProperties, Indent, IndentBlock,
+  Link, AutoLink, HorizontalLine,
+  Table, TableToolbar, TableProperties, TableCellProperties,
+  TableColumnResize, TableCaption
+];
+
+const BASE_EDITOR_CONFIG: any = {
+  plugins: CK_PLUGINS,
+  toolbar: {
+    items: [
+      "undo", "redo", "|",
+      "heading", "|",
+      "bold", "italic", "underline", "strikethrough", "removeFormat", "|",
+      "fontSize", "fontColor", "fontBackgroundColor", "|",
+      "alignment", "|",
+      "bulletedList", "numberedList", "indent", "outdent", "|",
+      "link", "insertTable", "horizontalLine",
+    ],
+    shouldNotGroupWhenFull: true,
+  },
+  heading: {
+    options: [
+      { model: "paragraph", title: "Paragraph", class: "ck-heading_paragraph" },
+      { model: "heading1", view: "h1", title: "Heading 1", class: "ck-heading_heading1" },
+      { model: "heading2", view: "h2", title: "Heading 2", class: "ck-heading_heading2" },
+      { model: "heading3", view: "h3", title: "Heading 3", class: "ck-heading_heading3" },
+      { model: "heading4", view: "h4", title: "Heading 4", class: "ck-heading_heading4" },
+    ],
+  },
+  fontSize: {
+    options: [10, 11, 12, 13, 14, "default", 16, 18, 20, 24, 28, 32],
+    supportAllValues: false,
+  },
+  fontColor: {
+    columns: 6,
+    colors: [
+      { color: "#1e293b", label: "Đậm" },
+      { color: "#334155", label: "Tối" },
+      { color: "#64748b", label: "Xám" },
+      { color: "#0f172a", label: "Đen" },
+      { color: "#ffffff", label: "Trắng", hasBorder: true },
+      { color: "#f8fafc", label: "Trắng nhạt", hasBorder: true },
+      { color: "#2563eb", label: "Xanh dương" },
+      { color: "#1d4ed8", label: "Xanh đậm" },
+      { color: "#7c3aed", label: "Tím" },
+      { color: "#059669", label: "Xanh lá" },
+      { color: "#dc2626", label: "Đỏ" },
+      { color: "#d97706", label: "Cam" },
+    ],
+  },
+  fontBackgroundColor: {
+    columns: 6,
+    colors: [
+      { color: "#fef9c3", label: "Vàng nhạt" },
+      { color: "#dcfce7", label: "Xanh lá nhạt" },
+      { color: "#dbeafe", label: "Xanh dương nhạt" },
+      { color: "#ede9fe", label: "Tím nhạt" },
+      { color: "#fce7f3", label: "Hồng nhạt" },
+      { color: "#fee2e2", label: "Đỏ nhạt" },
+      { color: "#fef3c7", label: "Cam nhạt" },
+      { color: "#f1f5f9", label: "Xám nhạt" },
+      { color: "#ffffff", label: "Không màu", hasBorder: true },
+    ],
+  },
+  alignment: {
+    options: ["left", "center", "right", "justify"],
+  },
+  table: {
+    contentToolbar: [
+      "tableColumn", "tableRow", "mergeTableCells", "|",
+      "tableProperties", "tableCellProperties",
+    ],
+  },
+  language: "en",
+  licenseKey: "GPL",
+};
+
 export default function RichtextEditor({ 
   value, 
   onChange, 
@@ -70,88 +151,23 @@ export default function RichtextEditor({
 
   const editorInstanceRef = useRef<any>(null);
   const isEditorReadyRef = useRef(false);
+  const initialDataRef = useRef(value);
+  const lastEmittedDataRef = useRef(value);
 
-  const plugins = [
-    Essentials, Undo, SelectAll, Paragraph, Heading,
-    Bold, Italic, Underline, Strikethrough, RemoveFormat,
-    FontSize, FontColor, FontBackgroundColor, Alignment,
-    List, ListProperties, Indent, IndentBlock,
-    Link, AutoLink, HorizontalLine,
-    Table, TableToolbar, TableProperties, TableCellProperties,
-    TableColumnResize, TableCaption
-  ];
+  useEffect(() => {
+    if (editorInstanceRef.current && isEditorReadyRef.current) {
+      const current = editorInstanceRef.current.getData();
+      if (value !== current && value !== lastEmittedDataRef.current) {
+        lastEmittedDataRef.current = value;
+        editorInstanceRef.current.setData(value || '');
+      }
+    }
+  }, [value]);
 
-  const editorConfig: any = {
-    plugins: plugins,
-    toolbar: {
-      items: [
-        "undo", "redo", "|",
-        "heading", "|",
-        "bold", "italic", "underline", "strikethrough", "removeFormat", "|",
-        "fontSize", "fontColor", "fontBackgroundColor", "|",
-        "alignment", "|",
-        "bulletedList", "numberedList", "indent", "outdent", "|",
-        "link", "insertTable", "horizontalLine",
-      ],
-      shouldNotGroupWhenFull: true,
-    },
-    heading: {
-      options: [
-        { model: "paragraph", title: "Paragraph", class: "ck-heading_paragraph" },
-        { model: "heading1", view: "h1", title: "Heading 1", class: "ck-heading_heading1" },
-        { model: "heading2", view: "h2", title: "Heading 2", class: "ck-heading_heading2" },
-        { model: "heading3", view: "h3", title: "Heading 3", class: "ck-heading_heading3" },
-        { model: "heading4", view: "h4", title: "Heading 4", class: "ck-heading_heading4" },
-      ],
-    },
-    fontSize: {
-      options: [10, 11, 12, 13, 14, "default", 16, 18, 20, 24, 28, 32],
-      supportAllValues: false,
-    },
-    fontColor: {
-      columns: 6,
-      colors: [
-        { color: "#1e293b", label: "Đậm" },
-        { color: "#334155", label: "Tối" },
-        { color: "#64748b", label: "Xám" },
-        { color: "#0f172a", label: "Đen" },
-        { color: "#ffffff", label: "Trắng", hasBorder: true },
-        { color: "#f8fafc", label: "Trắng nhạt", hasBorder: true },
-        { color: "#2563eb", label: "Xanh dương" },
-        { color: "#1d4ed8", label: "Xanh đậm" },
-        { color: "#7c3aed", label: "Tím" },
-        { color: "#059669", label: "Xanh lá" },
-        { color: "#dc2626", label: "Đỏ" },
-        { color: "#d97706", label: "Cam" },
-      ],
-    },
-    fontBackgroundColor: {
-      columns: 6,
-      colors: [
-        { color: "#fef9c3", label: "Vàng nhạt" },
-        { color: "#dcfce7", label: "Xanh lá nhạt" },
-        { color: "#dbeafe", label: "Xanh dương nhạt" },
-        { color: "#ede9fe", label: "Tím nhạt" },
-        { color: "#fce7f3", label: "Hồng nhạt" },
-        { color: "#fee2e2", label: "Đỏ nhạt" },
-        { color: "#fef3c7", label: "Cam nhạt" },
-        { color: "#f1f5f9", label: "Xám nhạt" },
-        { color: "#ffffff", label: "Không màu", hasBorder: true },
-      ],
-    },
-    alignment: {
-      options: ["left", "center", "right", "justify"],
-    },
-    table: {
-      contentToolbar: [
-        "tableColumn", "tableRow", "mergeTableCells", "|",
-        "tableProperties", "tableCellProperties",
-      ],
-    },
+  const editorConfig = useMemo(() => ({
+    ...BASE_EDITOR_CONFIG,
     placeholder: placeholder || "Nhập nội dung...",
-    language: "en",
-    licenseKey: "GPL",
-  };
+  }), [placeholder]);
 
   const handleGenerateAiText = async (promptToRun?: string) => {
     const finalPrompt = promptToRun || promptText;
@@ -273,6 +289,11 @@ export default function RichtextEditor({
       newValue = streamedText;
     } else {
       newValue = newValue ? `${newValue}\n${streamedText}` : streamedText;
+    }
+
+    if (editorInstanceRef.current && isEditorReadyRef.current) {
+      lastEmittedDataRef.current = newValue;
+      editorInstanceRef.current.setData(newValue);
     }
 
     onChange(newValue);
@@ -483,7 +504,7 @@ export default function RichtextEditor({
 
   return (
     <div
-      className={`ck-editor-wrapper rounded-lg border transition-all relative ${
+      className={`ck-editor-wrapper rounded-lg border transition-colors relative ${
         isFocused ? 'is-focused' : ''
       } ${error ? 'has-error' : ''} ${disabled ? 'is-readonly' : ''}`}
       style={{ '--ck-min-height': `${minHeight}px` } as any}
@@ -527,7 +548,7 @@ export default function RichtextEditor({
         <CKEditor
           editor={ClassicEditor}
           config={editorConfig}
-          data={value}
+          data={initialDataRef.current}
           onReady={(editor: any) => {
             editorInstanceRef.current = editor;
             isEditorReadyRef.current = true;
@@ -539,15 +560,17 @@ export default function RichtextEditor({
               );
             });
           }}
-          onChange={(event: any, editor: any) => {
-            if (!isEditorReadyRef.current) return;
-            const data = editor.getData();
-            if (data !== value) {
-              onChange(data);
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => {
+            setIsFocused(false);
+            if (editorInstanceRef.current && isEditorReadyRef.current) {
+              const data = editorInstanceRef.current.getData();
+              if (data !== lastEmittedDataRef.current) {
+                lastEmittedDataRef.current = data;
+                onChange(data);
+              }
             }
           }}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
         />
       )}
 

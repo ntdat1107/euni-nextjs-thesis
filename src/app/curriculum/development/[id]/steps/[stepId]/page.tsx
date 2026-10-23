@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button, Typography, Space, Tag, Breadcrumb, Card, message, Skeleton, Modal, Input, Tooltip
@@ -48,16 +48,16 @@ export default function CurriculumDevelopmentStepPage() {
   const [s1Form, setS1Form] = useState<SurveyForm | null>(null);
   const [s1Versions, setS1Versions] = useState<SurveyFormVersionItem[]>([]);
 
-  const handleS1FormLoaded = (form: SurveyForm | null, versions: SurveyFormVersionItem[]) => {
+  const handleS1FormLoaded = useCallback((form: SurveyForm | null, versions: SurveyFormVersionItem[]) => {
     setS1Form(form);
     setS1Versions(versions);
-  };
+  }, []);
 
   const s1HasVersion = Boolean(s1Form?.id && s1Form?.status);
 
   const s2Ref = useRef<S2PLORef | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const data = await surveyCampaignService.getById(id as string);
@@ -155,21 +155,21 @@ export default function CurriculumDevelopmentStepPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, stepId, urlMode, router]);
 
   useEffect(() => {
     fetchData();
-  }, [id, stepId]);
+  }, [fetchData]);
 
-  const handleSave = async (targetStatus: string = 'COMPLETED') => {
+  const handleSave = async (targetStatus: string = 'IN_PROGRESS') => {
     const screenCode = step?.configuration?.screenCode;
     const currentStepDbId = step?.id || stepId;
 
-    if (targetStatus === 'COMPLETED') {
+    if (targetStatus === 'COMPLETED' || targetStatus === 'UNDER_REVIEW') {
       if (screenCode === 'S2_PLO' && s2Ref.current) {
         const isValid = s2Ref.current.validate();
         if (!isValid) {
-          message.error('Vui lòng điền đầy đủ các thông tin bắt buộc trước khi lưu');
+          message.error('Vui lòng điền đầy đủ các thông tin bắt buộc trước khi nộp duyệt');
           return;
         }
       }
@@ -179,9 +179,13 @@ export default function CurriculumDevelopmentStepPage() {
       setIsSaving(true);
       let dataToSave = formData;
       if (screenCode === 'S2_PLO' && s2Ref.current) {
-        const latest = s2Ref.current.getData();
-        if (latest) {
-          dataToSave = latest;
+        try {
+          const latest = s2Ref.current.getData();
+          if (latest) {
+            dataToSave = latest;
+          }
+        } catch (err) {
+          console.error('[S2PLO] Error retrieving latest data:', err);
         }
       }
 
@@ -218,9 +222,14 @@ export default function CurriculumDevelopmentStepPage() {
             }
           }
         }
-        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, dataToSave, targetStatus);
-        await surveyCampaignService.saveStepData(id as string, (step?.id || stepId) as string, dataToSave, targetStatus);
       }
+
+      await surveyCampaignService.saveStepData(
+        id as string,
+        currentStepDbId as string,
+        dataToSave,
+        targetStatus
+      );
 
       if (targetStatus === 'UNDER_REVIEW') {
         message.success('Đã nộp kết quả bước và gửi yêu cầu phê duyệt thành công!');
@@ -234,8 +243,9 @@ export default function CurriculumDevelopmentStepPage() {
 
       setIsEdit(false);
       await fetchData();
-    } catch (error) {
-      message.error('Lỗi khi lưu thông tin');
+    } catch (error: any) {
+      console.error('Save step data error:', error);
+      message.error(error?.response?.data?.message || error?.message || 'Lỗi khi lưu thông tin');
     } finally {
       setIsSaving(false);
     }
@@ -285,7 +295,7 @@ export default function CurriculumDevelopmentStepPage() {
           />
         );
       case 'S2_PLO':
-        return <S2_PLO_Renderer ref={s2Ref} step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
+        return <S2_PLO_Renderer ref={s2Ref} step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
       case 'S3_XacDinhCauTruc_KhoiLuongKienThuc':
       case 'S3_STRUCTURE':
         return <S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
@@ -340,6 +350,38 @@ export default function CurriculumDevelopmentStepPage() {
   const resolvedStatus = resolveStepStatus(step, campaign?.steps || []);
   const statusMeta = getStepCustomBadge(step, campaign?.steps || []);
   const StatusIcon = statusMeta.icon;
+
+  const hasStepData = (() => {
+    if (!formData || typeof formData !== 'object') return false;
+    if (step?.resultData && step.resultData !== '{}' && step.resultData.trim() !== '') return true;
+    const screenCode = step?.configuration?.screenCode;
+    if (screenCode === 'S2_PLO') {
+      const source = (formData as any).ploBuilder || formData;
+      const pos = source.pos || source.peos;
+      const plos = source.plos;
+      return (Array.isArray(pos) && pos.length > 0) || (Array.isArray(plos) && plos.length > 0);
+    }
+    return Object.keys(formData).length > 0;
+  })();
+
+  const handleSubmitStep = () => {
+    const screenCode = step?.configuration?.screenCode;
+    if (screenCode === 'S2_PLO' && s2Ref.current) {
+      const isValid = s2Ref.current.validate();
+      if (!isValid) {
+        message.error('Vui lòng điền đầy đủ các thông tin bắt buộc trước khi nộp duyệt');
+        return;
+      }
+    }
+    Modal.confirm({
+      title: `Xác nhận nộp phê duyệt: ${step?.stepName}`,
+      content: 'Sau khi nộp, bước sẽ chuyển sang trạng thái Chờ duyệt để cấp có thẩm quyền (Trưởng khoa / Hội đồng) thẩm định và phê duyệt.',
+      okText: 'Nộp phê duyệt',
+      cancelText: 'Quay lại',
+      centered: true,
+      onOk: () => handleSave('UNDER_REVIEW')
+    });
+  };
 
   const canEditByStatus =
     campaign?.status !== 'APPROVED' &&
@@ -431,172 +473,174 @@ export default function CurriculumDevelopmentStepPage() {
                     ) : (
                       /* B. When in Detail mode */
                       <Space size="small">
-                        {/* B1. Under Review */}
-                        {s1Form?.status === 'PENDING_REVIEW' && (
+                        {/* B1. Step Completed: Only Approver/Admin can Reopen step */}
+                        {resolvedStatus === 'COMPLETED' ? (
+                          canApproveRole && (
+                            <Button
+                              icon={<RotateCcw size={14} />}
+                              onClick={() => {
+                                Modal.confirm({
+                                  title: `Mở lại bước: ${step?.stepName}`,
+                                  content: 'Mở lại bước này có thể ảnh hưởng đến dữ liệu của các bước kế tiếp đã phụ thuộc vào bước này. Bạn có chắc chắn muốn mở lại?',
+                                  okText: 'Mở lại bước',
+                                  cancelText: 'Hủy',
+                                  centered: true,
+                                  onOk: () => handleReview('IN_PROGRESS')
+                                });
+                              }}
+                              loading={isSaving}
+                              className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                            >
+                              Mở lại bước
+                            </Button>
+                          )
+                        ) : (
                           <>
-                            {/* Maker có thể chủ động thu hồi đơn để chỉnh sửa tiếp */}
-                            {canEditRole && (
-                              <Button
-                                icon={<RotateCcw size={14} />}
-                                onClick={() => {
-                                  Modal.confirm({
-                                    title: 'Thu hồi yêu cầu phê duyệt',
-                                    content: 'Bạn có chắc chắn muốn thu hồi yêu cầu phê duyệt biểu mẫu này? Biểu mẫu sẽ trở về trạng thái Bản nháp để bạn có thể tiếp tục chỉnh sửa.',
-                                    okText: 'Xác nhận thu hồi',
-                                    cancelText: 'Hủy bỏ',
-                                    centered: true,
-                                    onOk: async () => {
-                                      setIsSaving(true);
-                                      try {
-                                        await s1Ref.current?.recallSubmission();
-                                        await fetchData();
-                                      } finally {
-                                        setIsSaving(false);
-                                      }
-                                    }
-                                  });
-                                }}
-                                disabled={isSaving}
-                                className="rounded-lg text-xs font-semibold h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
-                              >
-                                Thu hồi yêu cầu duyệt
-                              </Button>
+                            {/* B2. Under Review */}
+                            {s1Form?.status === 'PENDING_REVIEW' && (
+                              <>
+                                {/* Maker có thể chủ động thu hồi đơn để chỉnh sửa tiếp */}
+                                {canEditRole && (
+                                  <Button
+                                    icon={<RotateCcw size={14} />}
+                                    onClick={() => {
+                                      Modal.confirm({
+                                        title: 'Thu hồi yêu cầu phê duyệt',
+                                        content: 'Bạn có chắc chắn muốn thu hồi yêu cầu phê duyệt biểu mẫu này? Biểu mẫu sẽ trở về trạng thái Bản nháp để bạn có thể tiếp tục chỉnh sửa.',
+                                        okText: 'Xác nhận thu hồi',
+                                        cancelText: 'Hủy bỏ',
+                                        centered: true,
+                                        onOk: async () => {
+                                          setIsSaving(true);
+                                          try {
+                                            await s1Ref.current?.recallSubmission();
+                                            await fetchData();
+                                          } finally {
+                                            setIsSaving(false);
+                                          }
+                                        }
+                                      });
+                                    }}
+                                    disabled={isSaving}
+                                    className="rounded-lg text-xs font-semibold h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                                  >
+                                    Thu hồi yêu cầu duyệt
+                                  </Button>
+                                )}
+
+                                {/* Cấp Approver có quyền yêu cầu sửa hoặc duyệt */}
+                                {canApproveRole && (
+                                  <>
+                                    <Button
+                                      danger
+                                      icon={<AlertTriangle size={14} />}
+                                      onClick={() => s1Ref.current?.rejectDesign()}
+                                      disabled={isSaving}
+                                      className="rounded-lg text-xs font-semibold h-9 px-4 border-rose-200 text-rose-600 hover:bg-rose-50"
+                                    >
+                                      Yêu cầu chỉnh sửa
+                                    </Button>
+                                    <Button
+                                      type="primary"
+                                      icon={<CheckCircle2 size={14} />}
+                                      onClick={() => {
+                                        Modal.confirm({
+                                          title: 'Phê duyệt thiết kế biểu mẫu khảo sát',
+                                          content: 'Bạn có chắc chắn muốn phê duyệt thiết kế biểu mẫu này? Sau khi duyệt, biểu mẫu có thể được xuất bản và tạo link khảo sát.',
+                                          okText: 'Xác nhận duyệt',
+                                          cancelText: 'Quay lại',
+                                          centered: true,
+                                          onOk: async () => {
+                                            setIsSaving(true);
+                                            try {
+                                              await s1Ref.current?.approveDesign();
+                                              await fetchData();
+                                            } finally {
+                                              setIsSaving(false);
+                                            }
+                                          }
+                                        });
+                                      }}
+                                      loading={isSaving}
+                                      className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
+                                    >
+                                      Phê duyệt thiết kế
+                                    </Button>
+                                  </>
+                                )}
+                              </>
                             )}
 
-                            {/* Cấp Approver có quyền yêu cầu sửa hoặc duyệt */}
-                            {canApproveRole && (
+                            {/* B3. Approved Design -> Ready to publish */}
+                            {s1Form?.status === 'APPROVED' && (
                               <>
-                                <Button
-                                  danger
-                                  icon={<AlertTriangle size={14} />}
-                                  onClick={() => s1Ref.current?.rejectDesign()}
-                                  disabled={isSaving}
-                                  className="rounded-lg text-xs font-semibold h-9 px-4 border-rose-200 text-rose-600 hover:bg-rose-50"
-                                >
-                                  Yêu cầu chỉnh sửa
-                                </Button>
+                                {canEditByStatus && (
+                                  <Button
+                                    icon={<Edit size={14} />}
+                                    onClick={() => setIsEdit(true)}
+                                    className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:border-blue-500"
+                                  >
+                                    Chỉnh sửa
+                                  </Button>
+                                )}
                                 <Button
                                   type="primary"
-                                  icon={<CheckCircle2 size={14} />}
-                                  onClick={() => {
-                                    Modal.confirm({
-                                      title: 'Phê duyệt thiết kế biểu mẫu khảo sát',
-                                      content: 'Bạn có chắc chắn muốn phê duyệt thiết kế biểu mẫu này? Sau khi duyệt, biểu mẫu có thể được xuất bản và tạo link khảo sát.',
-                                      okText: 'Xác nhận duyệt',
-                                      cancelText: 'Quay lại',
-                                      centered: true,
-                                      onOk: async () => {
-                                        setIsSaving(true);
-                                        try {
-                                          await s1Ref.current?.approveDesign();
-                                          await fetchData();
-                                        } finally {
-                                          setIsSaving(false);
-                                        }
-                                      }
-                                    });
+                                  icon={<Globe size={14} />}
+                                  onClick={async () => {
+                                    setIsSaving(true);
+                                    try {
+                                      await s1Ref.current?.publishForm();
+                                      await fetchData();
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
                                   }}
                                   loading={isSaving}
                                   className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
                                 >
-                                  Phê duyệt thiết kế
+                                  Xuất bản & Lấy link khảo sát
                                 </Button>
                               </>
                             )}
-                          </>
-                        )}
 
-                        {/* B2. Approved Design -> Ready to publish */}
-                        {s1Form?.status === 'APPROVED' && (
-                          <>
-                            {canEditByStatus && (
-                              <Button
-                                icon={<Edit size={14} />}
-                                onClick={() => setIsEdit(true)}
-                                className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:border-blue-500"
-                              >
-                                Chỉnh sửa
-                              </Button>
+                            {/* B4. Published -> Live Survey */}
+                            {s1Form?.status === 'PUBLISHED' && (
+                              <>
+                                <Button
+                                  icon={<RotateCcw size={14} />}
+                                  onClick={() => s1Ref.current?.requestRevision()}
+                                  disabled={isSaving}
+                                  className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                                >
+                                  Cho phép sửa biểu mẫu (Tạo v{(s1Form?.version || 1) + 1})
+                                </Button>
+                                {canApproveRole && (
+                                  <Button
+                                    type="primary"
+                                    icon={<CheckCircle2 size={14} />}
+                                    onClick={() => {
+                                      Modal.confirm({
+                                        title: `Nghiệm thu hoàn thành bước: ${step?.stepName}`,
+                                        content: 'Đợt khảo sát đã hoàn tất thu thập ý kiến. Bạn có chắc chắn muốn chốt hoàn thành bước này?',
+                                        okText: 'Xác nhận hoàn thành',
+                                        cancelText: 'Hủy',
+                                        centered: true,
+                                        onOk: () => handleReview('COMPLETED')
+                                      });
+                                    }}
+                                    loading={isSaving}
+                                    className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
+                                  >
+                                    Hoàn thành bước
+                                  </Button>
+                                )}
+                              </>
                             )}
-                            <Button
-                              type="primary"
-                              icon={<Globe size={14} />}
-                              onClick={async () => {
-                                setIsSaving(true);
-                                try {
-                                  await s1Ref.current?.publishForm();
-                                  await fetchData();
-                                } finally {
-                                  setIsSaving(false);
-                                }
-                              }}
-                              loading={isSaving}
-                              className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
-                            >
-                              Xuất bản & Lấy link khảo sát
-                            </Button>
-                          </>
-                        )}
 
-                        {/* B3. Published -> Live Survey */}
-                        {s1Form?.status === 'PUBLISHED' && (
-                          <>
-                            <Button
-                              icon={<RotateCcw size={14} />}
-                              onClick={() => s1Ref.current?.requestRevision()}
-                              disabled={isSaving}
-                              className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
-                            >
-                              Cho phép sửa biểu mẫu (Tạo v{(s1Form?.version || 1) + 1})
-                            </Button>
-                            {canApproveRole && (
-                              <Button
-                                type="primary"
-                                icon={<CheckCircle2 size={14} />}
-                                onClick={() => {
-                                  Modal.confirm({
-                                    title: `Nghiệm thu hoàn thành bước: ${step?.stepName}`,
-                                    content: 'Đợt khảo sát đã hoàn tất thu thập ý kiến. Bạn có chắc chắn muốn chốt hoàn thành bước này?',
-                                    okText: 'Xác nhận hoàn thành',
-                                    cancelText: 'Hủy',
-                                    centered: true,
-                                    onOk: () => handleReview('COMPLETED')
-                                  });
-                                }}
-                                loading={isSaving}
-                                className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
-                              >
-                                Hoàn thành bước
-                              </Button>
-                            )}
-                          </>
-                        )}
-
-                        {/* B4. Completed */}
-                        {resolvedStatus === 'COMPLETED' && canApproveRole && (
-                          <Button
-                            icon={<RotateCcw size={14} />}
-                            onClick={() => {
-                              Modal.confirm({
-                                title: `Mở lại bước: ${step?.stepName}`,
-                                content: 'Bước này sẽ được chuyển về trạng thái Đang thực hiện để người biên soạn có thể chỉnh sửa lại. Bạn có chắc chắn muốn mở lại?',
-                                okText: 'Mở lại bước',
-                                cancelText: 'Hủy',
-                                centered: true,
-                                onOk: () => handleReview('IN_PROGRESS')
-                              });
-                            }}
-                            loading={isSaving}
-                            className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
-                          >
-                            Mở lại bước
-                          </Button>
-                        )}
-
-                        {/* B5. Default/Draft/Pending/Rejected:
-                            - Chưa có version: Chỉnh sửa (enable), Nộp phê duyệt (disable + tooltip)
-                            - Đã có version: Chỉnh sửa (enable), Nộp phê duyệt (enable) */}
-                        {(!s1Form?.status || s1Form?.status === 'DRAFT' || resolvedStatus === 'REJECTED') && resolvedStatus !== 'COMPLETED' && (
+                            {/* B5. Default/Draft/Pending/Rejected:
+                                - Chưa có version: Chỉnh sửa (enable), Nộp phê duyệt (disable + tooltip)
+                                - Đã có version: Chỉnh sửa (enable), Nộp phê duyệt (enable) */}
+                            {(!s1Form?.status || s1Form?.status === 'DRAFT' || resolvedStatus === 'REJECTED') && (
                           <>
                             <Button
                               icon={<Edit size={14} />}
@@ -648,83 +692,19 @@ export default function CurriculumDevelopmentStepPage() {
                               >
                                 Nộp phê duyệt
                               </Button>
-                            )}
-                          </>
-                        )}
-                      </Space>
-                    )}
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </Space>
+                  )}
                   </>
                 ) : (
                   /* 2. GENERAL WORKFLOW FOR OTHER STEPS (S2, S3, S5, S6...) */
                   <>
-                    {/* When under review: Approver actions */}
-                    {!isEdit && resolvedStatus === 'UNDER_REVIEW' && canApproveRole && (
-                      <Space size="small">
-                        <Button
-                          danger
-                          icon={<AlertTriangle size={14} />}
-                          onClick={() => setIsRejectModalOpen(true)}
-                          disabled={isSaving}
-                          className="rounded-lg text-xs font-semibold h-9 px-4 border-rose-200 text-rose-600 hover:bg-rose-50"
-                        >
-                          Yêu cầu chỉnh sửa
-                        </Button>
-                        <Button
-                          type="primary"
-                          icon={<CheckCircle2 size={14} />}
-                          onClick={() => {
-                            Modal.confirm({
-                              title: `Phê duyệt bước: ${step?.stepName}`,
-                              content: 'Bạn có chắc chắn muốn phê duyệt bước này? Sau khi phê duyệt, bước sẽ chuyển sang trạng thái Hoàn thành và các bước tiếp theo sẽ được mở khóa.',
-                              okText: 'Xác nhận duyệt',
-                              cancelText: 'Quay lại',
-                              centered: true,
-                              onOk: () => handleReview('COMPLETED')
-                            });
-                          }}
-                          loading={isSaving}
-                          className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
-                        >
-                          Phê duyệt bước
-                        </Button>
-                      </Space>
-                    )}
-
-                    {/* When completed: Approver can reopen if needed */}
-                    {!isEdit && resolvedStatus === 'COMPLETED' && canApproveRole && (
-                      <Button
-                        icon={<RotateCcw size={14} />}
-                        onClick={() => {
-                          Modal.confirm({
-                            title: `Mở lại bước: ${step?.stepName}`,
-                            content: 'Bước này sẽ được chuyển về trạng thái Đang thực hiện để người biên soạn có thể chỉnh sửa lại. Bạn có chắc chắn muốn mở lại?',
-                            okText: 'Mở lại bước',
-                            cancelText: 'Hủy',
-                            centered: true,
-                            onOk: () => handleReview('IN_PROGRESS')
-                          });
-                        }}
-                        loading={isSaving}
-                        className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
-                      >
-                        Mở lại bước
-                      </Button>
-                    )}
-
-                    {/* When in view mode and allowed to edit: Performer can click Edit */}
-                    {!isEdit && canEditByStatus && (
-                      <Button
-                        type="primary"
-                        icon={<Edit size={14} />}
-                        onClick={() => setIsEdit(true)}
-                        className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
-                      >
-                        {resolvedStatus === 'REJECTED' ? 'Chỉnh sửa lại' : 'Chỉnh sửa'}
-                      </Button>
-                    )}
-
-                    {/* When currently editing: Performer actions */}
-                    {isEdit && (
+                    {/* A. When in Edit mode: strictly ONLY [ Hủy bỏ ] and [ Lưu ] */}
+                    {isEdit ? (
                       <Space size="small">
                         <Button
                           onClick={() => {
@@ -740,21 +720,150 @@ export default function CurriculumDevelopmentStepPage() {
                           Hủy bỏ
                         </Button>
                         <Button
-                          onClick={() => handleSave('IN_PROGRESS')}
-                          loading={isSaving}
-                          className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:border-blue-500 bg-white"
-                        >
-                          Lưu bản nháp
-                        </Button>
-                        <Button
                           type="primary"
-                          icon={<Send size={14} />}
+                          icon={<Save size={14} />}
                           loading={isSaving}
-                          onClick={() => handleSave('UNDER_REVIEW')}
+                          onClick={() => handleSave('IN_PROGRESS')}
                           className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
                         >
-                          Nộp phê duyệt
+                          Lưu
                         </Button>
+                      </Space>
+                    ) : (
+                      /* B. When in Detail mode */
+                      <Space size="small">
+                        {/* B1. Under Review */}
+                        {resolvedStatus === 'UNDER_REVIEW' && (
+                          <>
+                            {/* Maker có thể chủ động thu hồi đơn để chỉnh sửa tiếp */}
+                            {canEditRole && (
+                              <Button
+                                icon={<RotateCcw size={14} />}
+                                onClick={() => {
+                                  Modal.confirm({
+                                    title: 'Thu hồi yêu cầu phê duyệt',
+                                    content: 'Bạn có chắc chắn muốn thu hồi yêu cầu phê duyệt bước này? Bước sẽ trở về trạng thái Đang thực hiện để bạn có thể tiếp tục chỉnh sửa.',
+                                    okText: 'Xác nhận thu hồi',
+                                    cancelText: 'Hủy bỏ',
+                                    centered: true,
+                                    onOk: () => handleReview('IN_PROGRESS')
+                                  });
+                                }}
+                                disabled={isSaving}
+                                className="rounded-lg text-xs font-semibold h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                              >
+                                Thu hồi yêu cầu duyệt
+                              </Button>
+                            )}
+
+                            {/* Cấp Approver có quyền yêu cầu sửa hoặc duyệt */}
+                            {canApproveRole && (
+                              <>
+                                <Button
+                                  danger
+                                  icon={<AlertTriangle size={14} />}
+                                  onClick={() => setIsRejectModalOpen(true)}
+                                  disabled={isSaving}
+                                  className="rounded-lg text-xs font-semibold h-9 px-4 border-rose-200 text-rose-600 hover:bg-rose-50"
+                                >
+                                  Yêu cầu chỉnh sửa
+                                </Button>
+                                <Button
+                                  type="primary"
+                                  icon={<CheckCircle2 size={14} />}
+                                  onClick={() => {
+                                    Modal.confirm({
+                                      title: `Phê duyệt bước: ${step?.stepName}`,
+                                      content: 'Bạn có chắc chắn muốn phê duyệt bước này? Sau khi phê duyệt, bước sẽ chuyển sang trạng thái Hoàn thành và dữ liệu sẽ được đồng bộ vào hệ thống đào tạo.',
+                                      okText: 'Xác nhận duyệt',
+                                      cancelText: 'Quay lại',
+                                      centered: true,
+                                      onOk: () => handleReview('COMPLETED')
+                                    });
+                                  }}
+                                  loading={isSaving}
+                                  className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
+                                >
+                                  Phê duyệt bước
+                                </Button>
+                              </>
+                            )}
+                          </>
+                        )}
+
+                        {/* B2. Completed: Approver có thể mở lại bước */}
+                        {resolvedStatus === 'COMPLETED' && canApproveRole && (
+                          <Button
+                            icon={<RotateCcw size={14} />}
+                            onClick={() => {
+                              Modal.confirm({
+                                title: `Mở lại bước: ${step?.stepName}`,
+                                content: 'Mở lại bước này có thể ảnh hưởng đến dữ liệu của các bước kế tiếp đã phụ thuộc vào bước này. Bạn có chắc chắn muốn mở lại?',
+                                okText: 'Mở lại bước',
+                                cancelText: 'Hủy',
+                                centered: true,
+                                onOk: () => handleReview('IN_PROGRESS')
+                              });
+                            }}
+                            loading={isSaving}
+                            className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                          >
+                            Mở lại bước
+                          </Button>
+                        )}
+
+                        {/* B3. Default/Draft/InProgress/Rejected */}
+                        {resolvedStatus !== 'UNDER_REVIEW' && resolvedStatus !== 'COMPLETED' && (
+                          <>
+                            {canEditByStatus && (
+                              <Button
+                                icon={<Edit size={14} />}
+                                onClick={() => setIsEdit(true)}
+                                className="rounded-lg text-xs font-semibold h-9 px-4 border-slate-300 text-slate-700 hover:border-blue-500"
+                              >
+                                {resolvedStatus === 'REJECTED' ? 'Chỉnh sửa lại' : 'Chỉnh sửa'}
+                              </Button>
+                            )}
+
+                            {!hasStepData ? (
+                              <Tooltip title="Vui lòng chỉnh sửa và lưu trước khi nộp duyệt">
+                                <span>
+                                  <Button
+                                    type="primary"
+                                    icon={<Send size={14} />}
+                                    disabled
+                                    className="rounded-lg text-xs font-semibold h-9 px-4"
+                                  >
+                                    Nộp phê duyệt
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            ) : !canEditRole ? (
+                              <Tooltip title="Bạn không có quyền nộp phê duyệt bước này">
+                                <span>
+                                  <Button
+                                    type="primary"
+                                    icon={<Send size={14} />}
+                                    disabled
+                                    className="rounded-lg text-xs font-semibold h-9 px-4"
+                                  >
+                                    Nộp phê duyệt
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Button
+                                type="primary"
+                                icon={<Send size={14} />}
+                                loading={isSaving}
+                                onClick={handleSubmitStep}
+                                className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
+                              >
+                                Nộp phê duyệt
+                              </Button>
+                            )}
+                          </>
+                        )}
                       </Space>
                     )}
                   </>
@@ -777,7 +886,18 @@ export default function CurriculumDevelopmentStepPage() {
           <div className="mb-2 px-4 py-2.5 bg-rose-50/90 rounded-lg border border-rose-200/90 flex items-center gap-2.5 text-xs text-rose-800">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>
-              <strong>Yêu cầu chỉnh sửa:</strong> {step?.configuration?.reviewNote || 'Bước này đã bị người duyệt trả về để điều chỉnh. Vui lòng cập nhật và nộp lại.'}
+              <strong>Yêu cầu chỉnh sửa{step?.configuration?.reviewedBy ? ` từ ${step.configuration.reviewedBy}` : ''}:</strong>{' '}
+              {step?.configuration?.reviewNote || 'Bước này đã bị người duyệt trả về để điều chỉnh. Vui lòng cập nhật và nộp lại.'}
+            </span>
+          </div>
+        )}
+
+        {!prerequisiteLocked && (resolvedStatus === 'UNDER_REVIEW' || resolvedStatus === 'IN_PROGRESS') && step?.configuration?.previousReviewNote && (
+          <div className="mb-2 px-4 py-2.5 bg-slate-100/90 rounded-lg border border-slate-200 flex items-center gap-2.5 text-xs text-slate-700">
+            <Clock className="w-4 h-4 text-slate-500 shrink-0" />
+            <span>
+              <strong>Lưu ý từ lần đánh giá trước{step?.configuration?.previousReviewedBy ? ` (${step.configuration.previousReviewedBy})` : ''}:</strong>{' '}
+              {step.configuration.previousReviewNote}
             </span>
           </div>
         )}

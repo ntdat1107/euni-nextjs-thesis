@@ -78,7 +78,7 @@ export interface ProgramObjective {
   orderIndex: number;
 }
 
-export type DomainType = 'KNOWLEDGE' | 'SKILL' | 'ATTITUDE';
+export type DomainType = 'KNOWLEDGE' | 'SKILL' | 'AUTONOMY' | 'ATTITUDE';
 export type BloomLevel = 'REMEMBER' | 'UNDERSTAND' | 'APPLY' | 'ANALYZE' | 'EVALUATE' | 'CREATE';
 
 export interface PerformanceIndicator {

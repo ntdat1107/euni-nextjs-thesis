@@ -18,7 +18,8 @@ import {
   Alert,
   Spin,
   App,
-  Progress
+  Progress,
+  Dropdown
 } from 'antd';
 import {
   Plus,
@@ -30,7 +31,9 @@ import {
   Save,
   Search,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  MoreVertical,
+  ArrowRightLeft
 } from 'lucide-react';
 import { ProgramStructure } from '@/types/academic';
 import { programService } from '@/services/programService';
@@ -86,9 +89,16 @@ export default function S3StructureCourseRenderer({
   const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
   const [selectedCoursesToAdd, setSelectedCoursesToAdd] = useState<(number | string)[]>([]);
   const [selectedStructureIdForAdd, setSelectedStructureIdForAdd] = useState<number | undefined>(undefined);
+  const [selectedElectiveGroupIdForAdd, setSelectedElectiveGroupIdForAdd] = useState<number | null>(null);
   const [addCourseSearchText, setAddCourseSearchText] = useState('');
   const [defaultSemesterForAdd, setDefaultSemesterForAdd] = useState<number>(1);
   const [defaultRequiredForAdd, setDefaultRequiredForAdd] = useState<boolean>(true);
+
+  // Change structure modal state
+  const [isChangeStructureModalOpen, setIsChangeStructureModalOpen] = useState(false);
+  const [courseToMove, setCourseToMove] = useState<ProgramCourseItem | null>(null);
+  const [newStructureIdForMove, setNewStructureIdForMove] = useState<number | null>(null);
+  const [newElectiveGroupIdForMove, setNewElectiveGroupIdForMove] = useState<number | null>(null);
 
   // Fetch campaign if not provided
   useEffect(() => {
@@ -157,7 +167,14 @@ export default function S3StructureCourseRenderer({
 
   // Flatten structures tree helper
   const flatStructures = useMemo(() => {
-    const result: { id: number; name: string; code: string; creditRequired: number; fullName: string }[] = [];
+    const result: {
+      id: number;
+      name: string;
+      code: string;
+      creditRequired: number;
+      fullName: string;
+      electiveGroups: any[];
+    }[] = [];
     const recurse = (list: ProgramStructure[], prefix = '') => {
       for (const s of list) {
         const displayName = prefix ? `${prefix} › ${s.name}` : s.name;
@@ -166,7 +183,8 @@ export default function S3StructureCourseRenderer({
           name: s.name,
           code: s.code,
           creditRequired: s.creditRequired || 0,
-          fullName: displayName
+          fullName: displayName,
+          electiveGroups: s.electiveGroups || []
         });
         if (s.children && s.children.length > 0) {
           recurse(s.children, displayName);
@@ -225,6 +243,7 @@ export default function S3StructureCourseRenderer({
     }
 
     const targetStruct = flatStructures.find(s => s.id === selectedStructureIdForAdd);
+    const targetGroup = targetStruct?.electiveGroups?.find(g => g.id === selectedElectiveGroupIdForAdd);
     const newItems: ProgramCourseItem[] = selectedCoursesToAdd.map(cid => {
       const foundCourse = courses.find(c => c.id === cid);
       return {
@@ -234,8 +253,8 @@ export default function S3StructureCourseRenderer({
         credits: foundCourse?.credits || 3,
         structureId: selectedStructureIdForAdd || null,
         structureName: targetStruct ? targetStruct.name : null,
-        electiveGroupId: null,
-        electiveGroupName: null,
+        electiveGroupId: targetGroup ? targetGroup.id : null,
+        electiveGroupName: targetGroup ? targetGroup.name : null,
         semester: defaultSemesterForAdd || 1,
         required: defaultRequiredForAdd,
         data: null
@@ -248,6 +267,38 @@ export default function S3StructureCourseRenderer({
     setIsAddCourseModalOpen(false);
     setSelectedCoursesToAdd([]);
     setAddCourseSearchText('');
+    setSelectedElectiveGroupIdForAdd(null);
+  };
+
+  // Open modal to change structure for a specific course
+  const handleOpenChangeStructureModal = (course: ProgramCourseItem) => {
+    setCourseToMove(course);
+    setNewStructureIdForMove(course.structureId || null);
+    setNewElectiveGroupIdForMove(course.electiveGroupId || null);
+    setIsChangeStructureModalOpen(true);
+  };
+
+  // Confirm moving course to another structure
+  const handleChangeStructureConfirm = async () => {
+    if (!courseToMove) return;
+    const targetStruct = flatStructures.find(s => s.id === newStructureIdForMove);
+    const targetGroup = targetStruct?.electiveGroups?.find(g => g.id === newElectiveGroupIdForMove);
+
+    const updated = programCourses.map(p =>
+      p.courseId === courseToMove.courseId
+        ? {
+            ...p,
+            structureId: newStructureIdForMove || null,
+            structureName: targetStruct ? targetStruct.name : null,
+            electiveGroupId: targetGroup ? targetGroup.id : null,
+            electiveGroupName: targetGroup ? targetGroup.name : null
+          }
+        : p
+    );
+
+    await saveCoursesToBackend(updated);
+    setIsChangeStructureModalOpen(false);
+    setCourseToMove(null);
   };
 
   // Remove a course
@@ -301,6 +352,7 @@ export default function S3StructureCourseRenderer({
       name: string;
       fullName: string;
       creditRequired: number;
+      electiveGroups: any[];
       items: ProgramCourseItem[];
       totalCredits: number;
     }[] = [];
@@ -313,6 +365,7 @@ export default function S3StructureCourseRenderer({
         name: s.name,
         fullName: s.fullName,
         creditRequired: s.creditRequired,
+        electiveGroups: s.electiveGroups || [],
         items,
         totalCredits: items.reduce((sum, i) => sum + (Number(i.credits) || 0), 0)
       });
@@ -326,6 +379,7 @@ export default function S3StructureCourseRenderer({
         name: 'Học phần chưa phân khối kiến thức',
         fullName: 'Học phần chưa phân khối kiến thức (Cần gán khối theo TT 17)',
         creditRequired: 0,
+        electiveGroups: [],
         items: ungroupedItems,
         totalCredits: ungroupedItems.reduce((sum, i) => sum + (Number(i.credits) || 0), 0)
       });
@@ -545,71 +599,120 @@ export default function S3StructureCourseRenderer({
                           >
                             {/* Group Header */}
                             <div className={cn(
-                              "border-b px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+                              "border-b px-5 py-3.5 flex flex-col gap-2.5",
                               isUngrouped ? "bg-amber-50/80 border-amber-200" : "bg-slate-50/90 border-slate-200/90"
                             )}>
-                              <div className="flex items-center gap-2.5 flex-wrap">
-                                <div className="flex items-center gap-2">
-                                  {isUngrouped ? (
-                                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                                  ) : (
-                                    <Layers className="w-4 h-4 text-blue-600 shrink-0" />
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <div className="flex items-center gap-2">
+                                    {isUngrouped ? (
+                                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                                    ) : (
+                                      <Layers className="w-4 h-4 text-blue-600 shrink-0" />
+                                    )}
+                                    <span className={cn(
+                                      "font-bold text-sm tracking-tight",
+                                      isUngrouped ? "text-amber-900" : "text-slate-900"
+                                    )}>
+                                      {groupEntry.fullName}
+                                    </span>
+                                  </div>
+
+                                  {!isUngrouped && groupEntry.code && (
+                                    <code className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
+                                      {groupEntry.code}
+                                    </code>
                                   )}
-                                  <span className={cn(
-                                    "font-bold text-sm tracking-tight",
-                                    isUngrouped ? "text-amber-900" : "text-slate-900"
-                                  )}>
-                                    {groupEntry.fullName}
-                                  </span>
+
+                                  {!isUngrouped && (
+                                    <div className="flex items-center gap-1.5 ml-1">
+                                      <span className="text-xs font-semibold text-slate-600 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+                                        {groupEntry.items.length} môn học &bull; {cur} {req > 0 ? `/ ${req}` : ''} TC
+                                      </span>
+                                      {req > 0 && (
+                                        isMet ? (
+                                          <Tag color="success" className="font-bold text-[10px] rounded-full border-none">
+                                            Đạt định mức ({cur}/{req} TC)
+                                          </Tag>
+                                        ) : (
+                                          <Tag color="warning" className="font-bold text-[10px] rounded-full border-none">
+                                            Thiếu {req - cur} TC
+                                          </Tag>
+                                        )
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {isUngrouped && (
+                                    <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
+                                      {groupEntry.items.length} môn học &bull; {cur} TC chưa xếp khối
+                                    </span>
+                                  )}
                                 </div>
 
-                                {!isUngrouped && groupEntry.code && (
-                                  <code className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
-                                    {groupEntry.code}
-                                  </code>
-                                )}
-
-                                {!isUngrouped && (
-                                  <div className="flex items-center gap-1.5 ml-1">
-                                    <span className="text-xs font-semibold text-slate-600 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
-                                      {groupEntry.items.length} môn học &bull; {cur} {req > 0 ? `/ ${req}` : ''} TC
-                                    </span>
-                                    {req > 0 && (
-                                      isMet ? (
-                                        <Tag color="success" className="font-bold text-[10px] rounded-full border-none">
-                                          Đạt định mức ({cur}/{req} TC)
-                                        </Tag>
-                                      ) : (
-                                        <Tag color="warning" className="font-bold text-[10px] rounded-full border-none">
-                                          Thiếu {req - cur} TC
-                                        </Tag>
-                                      )
-                                    )}
-                                  </div>
-                                )}
-
-                                {isUngrouped && (
-                                  <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
-                                    {groupEntry.items.length} môn học &bull; {cur} TC chưa xếp khối
-                                  </span>
+                                {!readonly && !isUngrouped && (
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<Plus size={14} />}
+                                    onClick={() => {
+                                      setSelectedStructureIdForAdd(Number(groupEntry.id));
+                                      setSelectedCoursesToAdd([]);
+                                      setAddCourseSearchText('');
+                                      setSelectedElectiveGroupIdForAdd(null);
+                                      setIsAddCourseModalOpen(true);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-700 font-semibold text-xs flex items-center gap-1 p-0 cursor-pointer"
+                                  >
+                                    Thêm môn vào khối này
+                                  </Button>
                                 )}
                               </div>
 
-                              {!readonly && !isUngrouped && (
-                                <Button
-                                  type="link"
-                                  size="small"
-                                  icon={<Plus size={14} />}
-                                  onClick={() => {
-                                    setSelectedStructureIdForAdd(Number(groupEntry.id));
-                                    setSelectedCoursesToAdd([]);
-                                    setAddCourseSearchText('');
-                                    setIsAddCourseModalOpen(true);
-                                  }}
-                                  className="text-blue-600 hover:text-blue-700 font-semibold text-xs flex items-center gap-1 p-0 cursor-pointer"
-                                >
-                                  Thêm môn vào khối này
-                                </Button>
+                              {/* Elective Groups Progress Sub-bar */}
+                              {groupEntry.electiveGroups && groupEntry.electiveGroups.length > 0 && (
+                                <div className="w-full flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-slate-200/60">
+                                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                    <Layers size={13} className="text-purple-600" />
+                                    Tiến độ hướng chuyên sâu:
+                                  </span>
+                                  {groupEntry.electiveGroups.map((eg: any) => {
+                                    const groupCourses = groupEntry.items.filter(c => c.electiveGroupId === eg.id);
+                                    const earnedCredits = groupCourses.reduce((sum, c) => sum + (c.credits || 0), 0);
+                                    const isGroupMet = eg.minCredits > 0 && earnedCredits >= eg.minCredits;
+                                    return (
+                                      <span
+                                        key={eg.id}
+                                        className={cn(
+                                          "text-xs px-2.5 py-0.5 rounded-full border font-medium flex items-center gap-1.5",
+                                          isGroupMet
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            : "bg-purple-50 text-purple-700 border-purple-200"
+                                        )}
+                                      >
+                                        <span className="font-semibold">{eg.name}:</span>
+                                        <span className="font-bold">{earnedCredits} / {eg.minCredits} TC</span>
+                                        {isGroupMet ? (
+                                          <Tag color="success" className="text-[10px] !mr-0 rounded-full border-none px-1.5 font-bold">Đạt</Tag>
+                                        ) : (
+                                          <Tag color="purple" className="text-[10px] !mr-0 rounded-full border-none px-1.5 font-bold">Thiếu {eg.minCredits - earnedCredits} TC</Tag>
+                                        )}
+                                      </span>
+                                    );
+                                  })}
+                                  {(() => {
+                                    const unassigned = groupEntry.items.filter(c => !c.electiveGroupId);
+                                    if (unassigned.length > 0) {
+                                      const unassignedCredits = unassigned.reduce((sum, c) => sum + (c.credits || 0), 0);
+                                      return (
+                                        <span className="text-xs px-2.5 py-0.5 rounded-full border border-slate-200 bg-slate-100 text-slate-600 font-medium">
+                                          Tự chọn chung: {unassignedCredits} TC ({unassigned.length} môn)
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                </div>
                               )}
                             </div>
 
@@ -629,7 +732,7 @@ export default function S3StructureCourseRenderer({
                                   {
                                     title: 'STT',
                                     key: 'stt',
-                                    width: 60,
+                                    width: 50,
                                     align: 'center',
                                     render: () => {
                                       runningIdx += 1;
@@ -640,9 +743,9 @@ export default function S3StructureCourseRenderer({
                                     title: 'Mã HP',
                                     dataIndex: 'courseCode',
                                     key: 'courseCode',
-                                    width: 120,
+                                    width: 110,
                                     render: (code) => (
-                                      <code className="bg-slate-100 px-2.5 py-1 rounded-md text-slate-700 font-bold text-xs font-mono border border-slate-200/60">
+                                      <code className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-700 font-bold text-xs font-mono border border-slate-200/60">
                                         {code}
                                       </code>
                                     )
@@ -654,18 +757,18 @@ export default function S3StructureCourseRenderer({
                                     render: (name) => <span className="font-bold text-slate-800 text-xs">{name}</span>
                                   },
                                   {
-                                    title: 'Số tín chỉ',
+                                    title: 'Số TC',
                                     dataIndex: 'credits',
                                     key: 'credits',
-                                    width: 90,
+                                    width: 70,
                                     align: 'center',
                                     render: (credits) => <span className="font-bold text-slate-700 text-xs">{credits || 3}</span>
                                   },
                                   {
-                                    title: 'Học kỳ dự kiến',
+                                    title: 'Học kỳ',
                                     dataIndex: 'semester',
                                     key: 'semester',
-                                    width: 120,
+                                    width: 110,
                                     align: 'center',
                                     render: (sem, record: ProgramCourseItem) => (
                                       !readonly ? (
@@ -693,14 +796,14 @@ export default function S3StructureCourseRenderer({
                                     title: 'Tính chất',
                                     dataIndex: 'required',
                                     key: 'required',
-                                    width: 120,
+                                    width: 110,
                                     align: 'center',
                                     render: (req, record: ProgramCourseItem) => (
                                       !readonly ? (
                                         <Select
                                           value={record.required !== false}
                                           size="small"
-                                          className="w-28 text-xs"
+                                          className="w-24 text-xs"
                                           onChange={(val) => {
                                             const updated = programCourses.map(p =>
                                               p.courseId === record.courseId ? { ...p, required: val } : p
@@ -725,51 +828,84 @@ export default function S3StructureCourseRenderer({
                                       )
                                     )
                                   },
-                                  ...(!readonly ? [
+                                  ...(groupEntry.electiveGroups && groupEntry.electiveGroups.length > 0 ? [
                                     {
-                                      title: 'Đổi Khối kiến thức',
-                                      key: 'changeStructure',
-                                      width: 240,
+                                      title: 'Hướng tự chọn',
+                                      key: 'electiveGroup',
+                                      width: 220,
                                       render: (_: any, record: ProgramCourseItem) => (
-                                        <Select
-                                          value={record.structureId || undefined}
-                                          placeholder="Chọn khối..."
-                                          size="small"
-                                          className="w-full text-xs"
-                                          onChange={(newSid) => {
-                                            const targetStruct = flatStructures.find(s => s.id === newSid);
-                                            const updated = programCourses.map(p =>
-                                              p.courseId === record.courseId
-                                                ? { ...p, structureId: newSid || null, structureName: targetStruct ? targetStruct.name : null }
-                                                : p
-                                            );
-                                            saveCoursesToBackend(updated);
-                                          }}
-                                          allowClear
-                                        >
-                                          {flatStructures.map(s => (
-                                            <Select.Option key={s.id} value={s.id}>
-                                              {s.fullName}
-                                            </Select.Option>
-                                          ))}
-                                        </Select>
+                                        !readonly ? (
+                                          <Select
+                                            value={record.electiveGroupId || null}
+                                            size="small"
+                                            className="w-full text-xs"
+                                            onChange={(val) => {
+                                              const foundG = groupEntry.electiveGroups.find((g: any) => g.id === val);
+                                              const updated = programCourses.map(p =>
+                                                p.courseId === record.courseId
+                                                  ? { ...p, electiveGroupId: val || null, electiveGroupName: foundG ? foundG.name : null }
+                                                  : p
+                                              );
+                                              saveCoursesToBackend(updated);
+                                            }}
+                                            options={[
+                                              { label: 'Tự chọn chung', value: null },
+                                              ...groupEntry.electiveGroups.map((eg: any) => ({
+                                                label: `${eg.name} (≥ ${eg.minCredits} TC)`,
+                                                value: eg.id
+                                              }))
+                                            ]}
+                                          />
+                                        ) : (
+                                          record.electiveGroupName ? (
+                                            <Tag color="purple" className="rounded-md text-xs font-semibold border-none">
+                                              {record.electiveGroupName}
+                                            </Tag>
+                                          ) : (
+                                            <span className="text-slate-400 text-xs italic">Tự chọn chung</span>
+                                          )
+                                        )
                                       )
-                                    },
+                                    }
+                                  ] : []),
+                                  ...(!readonly ? [
                                     {
                                       title: 'Thao tác',
                                       key: 'actions',
-                                      width: 70,
+                                      width: 60,
                                       align: 'center' as const,
                                       render: (_: any, record: ProgramCourseItem) => (
-                                        <Tooltip title="Gỡ môn khỏi CTĐT">
+                                        <Dropdown
+                                          menu={{
+                                            items: [
+                                              {
+                                                key: 'change-structure',
+                                                label: 'Đổi Khối kiến thức',
+                                                icon: <ArrowRightLeft size={14} className="text-blue-600" />,
+                                                onClick: () => handleOpenChangeStructureModal(record)
+                                              },
+                                              {
+                                                type: 'divider'
+                                              },
+                                              {
+                                                key: 'remove',
+                                                label: 'Gỡ môn khỏi CTĐT',
+                                                icon: <Trash2 size={14} className="text-rose-500" />,
+                                                danger: true,
+                                                onClick: () => handleRemoveCourse(record.courseId)
+                                              }
+                                            ]
+                                          }}
+                                          trigger={['click']}
+                                          placement="bottomRight"
+                                        >
                                           <Button
                                             type="text"
-                                            danger
-                                            icon={<Trash2 size={15} />}
-                                            onClick={() => handleRemoveCourse(record.courseId)}
-                                            className="text-rose-500 hover:bg-rose-50 rounded-lg w-8 h-8 flex items-center justify-center mx-auto cursor-pointer"
+                                            size="small"
+                                            icon={<MoreVertical size={16} className="text-slate-500" />}
+                                            className="hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center mx-auto cursor-pointer"
                                           />
-                                        </Tooltip>
+                                        </Dropdown>
                                       )
                                     }
                                   ] : [])
@@ -821,7 +957,14 @@ export default function S3StructureCourseRenderer({
                 placeholder="Chọn khối kiến thức để gán..."
                 className="w-full rounded-xl"
                 value={selectedStructureIdForAdd}
-                onChange={setSelectedStructureIdForAdd}
+                onChange={(val) => {
+                  setSelectedStructureIdForAdd(val);
+                  setSelectedElectiveGroupIdForAdd(null);
+                  const st = flatStructures.find(s => s.id === val);
+                  if (st?.electiveGroups && st.electiveGroups.length > 0) {
+                    setDefaultRequiredForAdd(false);
+                  }
+                }}
                 allowClear
               >
                 {flatStructures.map(s => (
@@ -831,6 +974,33 @@ export default function S3StructureCourseRenderer({
                 ))}
               </Select>
             </div>
+
+            {(() => {
+              const selectedStruct = flatStructures.find(s => s.id === selectedStructureIdForAdd);
+              if (selectedStruct?.electiveGroups && selectedStruct.electiveGroups.length > 0) {
+                return (
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                      Hướng tự chọn chuyên sâu:
+                    </span>
+                    <Select
+                      value={selectedElectiveGroupIdForAdd}
+                      onChange={setSelectedElectiveGroupIdForAdd}
+                      className="w-full rounded-xl"
+                      placeholder="Chọn hướng tự chọn..."
+                      options={[
+                        { label: 'Tự chọn chung (không phân hướng)', value: null },
+                        ...selectedStruct.electiveGroups.map((eg: any) => ({
+                          label: `${eg.name} (Tối thiểu: ${eg.minCredits} TC)`,
+                          value: eg.id
+                        }))
+                      ]}
+                    />
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div className="grid grid-cols-2 gap-4 pt-1">
               <div>
@@ -914,6 +1084,98 @@ export default function S3StructureCourseRenderer({
               }
             ]}
           />
+        </div>
+      </Modal>
+
+      {/* 4. Change Structure Modal */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+              <ArrowRightLeft size={16} />
+            </span>
+            <div>
+              <div className="font-bold text-slate-800 text-sm">Chuyển Khối kiến thức cho Môn học</div>
+              <div className="text-xs text-slate-500 font-normal">
+                {courseToMove?.courseCode} - {courseToMove?.courseName} ({courseToMove?.credits} TC)
+              </div>
+            </div>
+          </div>
+        }
+        open={isChangeStructureModalOpen}
+        onOk={handleChangeStructureConfirm}
+        onCancel={() => {
+          setIsChangeStructureModalOpen(false);
+          setCourseToMove(null);
+        }}
+        okText="Lưu thay đổi"
+        cancelText="Hủy bỏ"
+        centered
+        width={500}
+      >
+        <div className="py-3 space-y-4">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs text-slate-600 space-y-1">
+            <div>
+              <span className="font-semibold text-slate-700">Khối hiện tại: </span>
+              {courseToMove?.structureName || 'Chưa phân khối'}
+            </div>
+            {courseToMove?.electiveGroupName && (
+              <div>
+                <span className="font-semibold text-slate-700">Hướng hiện tại: </span>
+                <Tag color="purple" className="text-[10px] rounded-md border-none ml-1">
+                  {courseToMove.electiveGroupName}
+                </Tag>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+              Khối kiến thức mới:
+            </label>
+            <Select
+              value={newStructureIdForMove}
+              onChange={(val) => {
+                setNewStructureIdForMove(val);
+                setNewElectiveGroupIdForMove(null);
+              }}
+              className="w-full rounded-xl"
+              placeholder="Chọn khối kiến thức mới..."
+            >
+              {flatStructures.map(s => (
+                <Select.Option key={s.id} value={s.id}>
+                  {s.fullName} {s.creditRequired > 0 ? `(${s.creditRequired} TC)` : ''}
+                </Select.Option>
+              ))}
+            </Select>
+          </div>
+
+          {(() => {
+            const selectedStruct = flatStructures.find(s => s.id === newStructureIdForMove);
+            if (selectedStruct?.electiveGroups && selectedStruct.electiveGroups.length > 0) {
+              return (
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                    Hướng tự chọn chuyên sâu:
+                  </label>
+                  <Select
+                    value={newElectiveGroupIdForMove}
+                    onChange={setNewElectiveGroupIdForMove}
+                    className="w-full rounded-xl"
+                    placeholder="Chọn hướng tự chọn..."
+                    options={[
+                      { label: 'Tự chọn chung (không phân hướng)', value: null },
+                      ...selectedStruct.electiveGroups.map((eg: any) => ({
+                        label: `${eg.name} (Tối thiểu: ${eg.minCredits} TC)`,
+                        value: eg.id
+                      }))
+                    ]}
+                  />
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       </Modal>
     </div>

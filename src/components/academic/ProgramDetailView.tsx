@@ -6,7 +6,6 @@ import {
   Table,
   Button,
   Card,
-  Modal,
   Form,
   Input,
   Select,
@@ -24,20 +23,14 @@ import {
   Spin
 } from 'antd';
 import {
-  Plus,
-  Trash2,
   Edit3,
   FileText,
   CheckCircle,
   BookOpen,
   ArrowLeft,
   Eye,
-  AlertTriangle,
   AlertCircle,
-  Layers,
-  Save,
-  Clock,
-  Sparkles
+  Layers
 } from 'lucide-react';
 import { Program, ProgramStructure, ProgramObeMatrixData } from '@/types/academic';
 import { programService } from '@/services/programService';
@@ -79,7 +72,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(!isNew);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAssigning, setIsAssigning] = useState(false);
   const [program, setProgram] = useState<Program | null>(null);
   const [isEditMode, setIsEditMode] = useState(isNew);
   const [activeTab, setActiveTab] = useState('1');
@@ -90,12 +82,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
   const [programCoursesDetail, setProgramCoursesDetail] = useState<any[]>([]);
   const [selectedCourseForView, setSelectedCourseForView] = useState<any | null>(null);
   const [isCourseDrawerOpen, setIsCourseDrawerOpen] = useState(false);
-
-  // Add course modal
-  const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
-  const [selectedCoursesToAdd, setSelectedCoursesToAdd] = useState<(number | string)[]>([]);
-  const [selectedStructureIdForAdd, setSelectedStructureIdForAdd] = useState<number | undefined>(undefined);
-  const [addCourseSearchText, setAddCourseSearchText] = useState('');
 
   // Structures & OBE
   const [structures, setStructures] = useState<ProgramStructure[]>([]);
@@ -198,13 +184,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
     return result;
   }, [structures]);
 
-  // Detect unsaved course changes
-  const hasCourseChanges = useMemo(() => {
-    if (programCourses.length !== initialProgramCourses.length) return true;
-    const initialMap = new Map(initialProgramCourses.map(i => [i.courseId, i.structureId]));
-    return programCourses.some(i => initialMap.get(i.courseId) !== i.structureId);
-  }, [programCourses, initialProgramCourses]);
-
   // Save General Info
   const handleSubmit = async (values: any) => {
     try {
@@ -235,45 +214,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
       message.error(e?.message || 'Lỗi khi lưu chương trình đào tạo');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // Save Courses distribution
-  const handleSaveCourses = async () => {
-    if (!program) {
-      message.warning('Vui lòng lưu thông tin chung trước khi gán học phần');
-      setActiveTab('1');
-      return;
-    }
-    if (program.status !== 'DRAFT') {
-      message.error('Chỉ được phép chỉnh sửa khung môn học khi chương trình ở trạng thái Bản nháp!');
-      return;
-    }
-    if (program.hasUncompletedCampaign) {
-      message.error('Chương trình đào tạo đang có đợt khảo sát chưa hoàn thành, không thể chỉnh sửa môn học!');
-      return;
-    }
-    try {
-      setIsAssigning(true);
-      const items = programCourses.map(c => ({
-        courseId: c.courseId,
-        structureId: c.structureId || null,
-        electiveGroupId: c.electiveGroupId || null,
-        semester: c.semester || 1,
-        required: c.required !== false
-      }));
-      await programService.assignCourses(program.id, {
-        courseIds: items.map(i => i.courseId),
-        items
-      });
-      message.success('Lưu danh sách học phần theo khối kiến thức thành công');
-      setInitialProgramCourses([...programCourses]);
-      setIsEditMode(false);
-      loadProgramData();
-    } catch (e: any) {
-      message.error(e?.message || 'Lỗi khi gán học phần vào CTĐT');
-    } finally {
-      setIsAssigning(false);
     }
   };
 
@@ -328,9 +268,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
     );
   }
 
-  const isDraft = program ? program.status === 'DRAFT' : true;
-  const isLockedByCampaign = false;
-  const isCanEditCourses = false;
   const totalCredits = programCourses.reduce((sum, item) => sum + (Number(item.credits) || 0), 0);
   const programTargetCredits = Number(program?.totalCredits) || 0;
 
@@ -618,25 +555,12 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                 </span>
               ),
               children: !isNew && program ? (
-                <div className="py-6 space-y-4">
-                  <Alert
-                    message="Cấu trúc khối kiến thức được biên soạn trong Quy trình Xây dựng CTĐT"
-                    description="Các khối kiến thức (Đại cương, Cơ sở ngành, Chuyên ngành,...) và định mức tín chỉ được thiết lập tại Bước 3 (Xác định cấu trúc, khối lượng kiến thức) của đợt xây dựng CTĐT. Màn hình này hiển thị dữ liệu phục vụ theo dõi và tra cứu."
-                    type="info"
-                    showIcon
-                    className="rounded-2xl border-blue-200 bg-blue-50/70"
-                  />
+                <div className="py-4">
                   <ProgramStructureTree
                     programId={program.id}
                     structures={structures}
                     onRefresh={() => loadStructures(program.id)}
                     readOnly={true}
-                    onNavigateToCourses={(structId) => {
-                      setActiveTab('3');
-                      if (structId) {
-                        setSelectedStructureIdForAdd(structId);
-                      }
-                    }}
                   />
                 </div>
               ) : (
@@ -718,156 +642,47 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                   });
                 }
 
-                const availableCourses = courses.filter(c => !programCourses.some(pc => pc.courseId === c.id));
-                const filteredAvailableCourses = availableCourses.filter(c =>
-                  !addCourseSearchText ||
-                  c.name.toLowerCase().includes(addCourseSearchText.toLowerCase()) ||
-                  c.code.toLowerCase().includes(addCourseSearchText.toLowerCase())
-                );
-
                 return (
-                  <div className="py-6 space-y-6">
-                    {/* Banner thông báo dữ liệu từ Bước 3 */}
-                    <Alert
-                      message="Khung học phần phân bổ theo Khối kiến thức (TT 17)"
-                      description="Danh mục học phần và việc gán vào các khối kiến thức được biên soạn trực tiếp tại Bước 3 (Xác định cấu trúc, khối lượng kiến thức) của quy trình xây dựng CTĐT. Bảng dưới đây hiển thị phân bổ hiện thời của chương trình phục vụ theo dõi và tra cứu."
-                      type="info"
-                      showIcon
-                      className="rounded-2xl border-blue-200 bg-blue-50/70"
-                    />
-
-                    {/* Banner giải thích sự phụ thuộc vào Cây cấu trúc TT 17 */}
-                    <div className="bg-gradient-to-r from-slate-50 via-blue-50/40 to-slate-50 p-4 rounded-2xl border border-blue-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
-                          <Layers className="w-5 h-5" />
-                        </div>
-                        <div className="space-y-1">
-                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                            Khung học phần phụ thuộc Cây Khối kiến thức (TT 17/2021/TT-BGDĐT)
-                          </h4>
-                          <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
-                            Mỗi học phần trong chương trình đào tạo bắt buộc phải thuộc một Khối kiến thức cụ thể (Đại cương, Cơ sở ngành, Chuyên ngành hoặc Nhánh tự chọn). Định mức tín chỉ của từng khối được thiết lập tại <span className="font-semibold text-blue-700">Tab 2: Cấu trúc Khối kiến thức</span>.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="default"
-                        size="small"
-                        icon={<Layers size={13} />}
-                        onClick={() => setActiveTab('2')}
-                        className="shrink-0 rounded-xl h-8 text-xs font-semibold border-blue-200 text-blue-700 hover:bg-blue-50/80 cursor-pointer"
-                      >
-                        Xem cây khối kiến thức
-                      </Button>
-                    </div>
-
-                    {/* Cảnh báo chưa có khối kiến thức */}
-                    {flatStructures.length === 0 && (
-                      <Alert
-                        message="Chưa thiết lập Cấu trúc Khối kiến thức"
-                        description={
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-1">
-                            <span>Chương trình chưa có cây khối kiến thức theo TT 17/2021/TT-BGDĐT. Hãy tạo cây cấu trúc trước để phân bổ môn học chuẩn xác.</span>
-                            <Button
-                              type="primary"
-                              size="small"
-                              onClick={() => setActiveTab('2')}
-                              className="rounded-xl bg-amber-600 hover:bg-amber-700 border-none text-xs font-semibold shrink-0 cursor-pointer"
-                            >
-                              Thiết lập Cây cấu trúc ngay
-                            </Button>
-                          </div>
-                        }
-                        type="warning"
-                        showIcon
-                        className="rounded-2xl border-amber-200 bg-amber-50/90"
-                      />
-                    )}
-
-                    {/* Thanh tổng quan & nút thao tác */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+                  <div className="py-4 space-y-4">
+                    {/* Thanh tổng quan */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
                       <div className="flex items-center gap-4 flex-wrap text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-600">Tổng môn học:</span>
-                          <span className="font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+                          <span className="font-semibold text-slate-600">Tổng môn học:</span>
+                          <span className="font-bold text-blue-700 bg-white px-2.5 py-0.5 rounded-full border border-blue-100">
                             {programCourses.length} môn
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-600">Tín chỉ phân bổ:</span>
-                          <span className="font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
+                          <span className="font-semibold text-slate-600">Tín chỉ phân bổ:</span>
+                          <span className="font-bold text-emerald-700 bg-white px-2.5 py-0.5 rounded-full border border-emerald-100">
                             {totalCredits} {programTargetCredits > 0 ? `/ ${programTargetCredits}` : ''} TC
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-600">Khối kiến thức:</span>
-                          <span className="font-extrabold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-100">
+                          <span className="font-semibold text-slate-600">Khối kiến thức:</span>
+                          <span className="font-bold text-purple-700 bg-white px-2.5 py-0.5 rounded-full border border-purple-100">
                             {flatStructures.length} khối định nghĩa
                           </span>
                         </div>
                         {ungroupedItems.length > 0 && (
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                            <span className="font-semibold text-amber-700 bg-white px-2.5 py-0.5 rounded-full border border-amber-200">
                               ⚠ {ungroupedItems.length} môn chưa gán khối
                             </span>
                           </div>
                         )}
                       </div>
-
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {!isEditMode && isCanEditCourses && (
-                          <Button
-                            type="default"
-                            icon={<Edit3 size={15} />}
-                            onClick={() => setIsEditMode(true)}
-                            className="rounded-xl h-10 px-4 font-semibold text-xs border-slate-300 hover:border-blue-500 text-slate-700 cursor-pointer"
-                          >
-                            Chỉnh sửa khung môn học
-                          </Button>
-                        )}
-                        {isEditMode && isCanEditCourses && (
-                          <Button
-                            type="primary"
-                            icon={<Plus size={16} />}
-                            onClick={() => {
-                              setSelectedStructureIdForAdd(flatStructures[0]?.id || undefined);
-                              setSelectedCoursesToAdd([]);
-                              setAddCourseSearchText('');
-                              setIsAddCourseModalOpen(true);
-                            }}
-                            className="rounded-xl h-10 px-5 font-semibold text-xs bg-blue-600 hover:bg-blue-700 shadow-md border-none flex items-center gap-1.5 cursor-pointer"
-                          >
-                            Thêm môn học vào CTĐT
-                          </Button>
-                        )}
-                      </div>
                     </div>
 
                     {/* Danh sách hiển thị theo từng Khối kiến thức */}
-                    {groupedEntries.length === 0 || (programCourses.length === 0 && !isEditMode) ? (
-                      <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center text-slate-400 space-y-3">
+                    {groupedEntries.length === 0 || programCourses.length === 0 ? (
+                      <div className="bg-white rounded-xl border border-dashed border-slate-200 p-12 text-center text-slate-400 space-y-3">
                         <BookOpen className="w-10 h-10 mx-auto text-slate-300" />
                         <div className="font-medium text-sm">Chưa có môn học nào trong khung chương trình</div>
-                        {isCanEditCourses && (
-                          <Button
-                            type="primary"
-                            icon={<Plus size={14} />}
-                            onClick={() => {
-                              setIsEditMode(true);
-                              setSelectedStructureIdForAdd(flatStructures[0]?.id || undefined);
-                              setSelectedCoursesToAdd([]);
-                              setAddCourseSearchText('');
-                              setIsAddCourseModalOpen(true);
-                            }}
-                            className="rounded-xl bg-blue-600 text-xs cursor-pointer"
-                          >
-                            Thêm môn học ngay
-                          </Button>
-                        )}
                       </div>
                     ) : (
-                      <div className="space-y-6">
+                      <div className="space-y-4">
                         {groupedEntries.map((groupEntry) => {
                           let runningIdx = 0;
                           const isUngrouped = groupEntry.id === 'ungrouped';
@@ -879,14 +694,14 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                             <div
                               key={String(groupEntry.id)}
                               className={cn(
-                                "bg-white rounded-2xl border shadow-2xs overflow-hidden transition-all",
-                                isUngrouped ? "border-amber-300/80 bg-amber-50/20" : "border-slate-200/90"
+                                "bg-white rounded-xl border overflow-hidden transition-all",
+                                isUngrouped ? "border-amber-300/80 bg-amber-50/20" : "border-slate-200/80"
                               )}
                             >
                               {/* Header Khối kiến thức */}
                               <div className={cn(
-                                "border-b px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3",
-                                isUngrouped ? "bg-amber-50/80 border-amber-200" : "bg-slate-50/90 border-slate-200/90"
+                                "border-b px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+                                isUngrouped ? "bg-amber-50/80 border-amber-200" : "bg-slate-50/80 border-slate-200/80"
                               )}>
                                 <div className="flex items-center gap-2.5 flex-wrap">
                                   <div className="flex items-center gap-2">
@@ -935,23 +750,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                                     </span>
                                   )}
                                 </div>
-
-                                {isEditMode && isCanEditCourses && !isUngrouped && (
-                                  <Button
-                                    type="link"
-                                    size="small"
-                                    icon={<Plus size={14} />}
-                                    onClick={() => {
-                                      setSelectedStructureIdForAdd(Number(groupEntry.id));
-                                      setSelectedCoursesToAdd([]);
-                                      setAddCourseSearchText('');
-                                      setIsAddCourseModalOpen(true);
-                                    }}
-                                    className="text-blue-600 hover:text-blue-700 font-semibold text-xs flex items-center gap-1 p-0 cursor-pointer"
-                                  >
-                                    Thêm môn vào khối này
-                                  </Button>
-                                )}
                               </div>
 
                               {/* Bảng môn học */}
@@ -964,12 +762,13 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                                   dataSource={groupEntry.items}
                                   rowKey="courseId"
                                   pagination={false}
+                                  size="small"
                                   className="ant-table-custom"
                                   columns={[
                                     {
                                       title: 'STT',
                                       key: 'stt',
-                                      width: 65,
+                                      width: 60,
                                       align: 'center',
                                       render: () => {
                                         runningIdx += 1;
@@ -980,9 +779,9 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                                       title: 'Mã HP',
                                       dataIndex: 'courseCode',
                                       key: 'courseCode',
-                                      width: 130,
+                                      width: 120,
                                       render: (code) => (
-                                        <code className="bg-slate-100 px-2.5 py-1 rounded-md text-slate-700 font-bold text-xs font-mono border border-slate-200/60">
+                                        <code className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold text-xs font-mono border border-slate-200/60">
                                           {code}
                                         </code>
                                       )
@@ -991,20 +790,20 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                                       title: 'Tên học phần',
                                       dataIndex: 'courseName',
                                       key: 'courseName',
-                                      render: (name) => <span className="font-bold text-slate-800 text-xs">{name}</span>
+                                      render: (name) => <span className="font-semibold text-slate-800 text-xs">{name}</span>
                                     },
                                     {
                                       title: 'Số tín chỉ',
                                       dataIndex: 'credits',
                                       key: 'credits',
-                                      width: 100,
+                                      width: 90,
                                       align: 'center',
                                       render: (credits) => <span className="font-bold text-slate-700 text-xs">{credits || 3}</span>
                                     },
                                     {
                                       title: 'Đề cương & CLO',
                                       key: 'syllabus',
-                                      width: 160,
+                                      width: 150,
                                       align: 'center',
                                       render: (_: any, record: ProgramCourseItem) => {
                                         const detail = programCoursesDetail.find(d => d.courseId === record.courseId);
@@ -1041,56 +840,7 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                                           </div>
                                         );
                                       }
-                                    },
-                                    ...((isEditMode && isCanEditCourses) ? [
-                                      {
-                                        title: 'Khối kiến thức',
-                                        key: 'changeStructure',
-                                        width: 260,
-                                        render: (_: any, record: ProgramCourseItem) => (
-                                          <Select
-                                            value={record.structureId || undefined}
-                                            placeholder="Chọn khối kiến thức..."
-                                            size="small"
-                                            className="w-full text-xs"
-                                            onChange={(newSid) => {
-                                              const targetStruct = flatStructures.find(s => s.id === newSid);
-                                              setProgramCourses(prev => prev.map(p =>
-                                                p.courseId === record.courseId
-                                                  ? { ...p, structureId: newSid || null, structureName: targetStruct ? targetStruct.name : null }
-                                                  : p
-                                              ));
-                                            }}
-                                            allowClear
-                                          >
-                                            {flatStructures.map(s => (
-                                              <Select.Option key={s.id} value={s.id}>
-                                                {s.fullName}
-                                              </Select.Option>
-                                            ))}
-                                          </Select>
-                                        )
-                                      },
-                                      {
-                                        title: 'Thao tác',
-                                        key: 'actions',
-                                        width: 80,
-                                        align: 'center' as const,
-                                        render: (_: any, record: ProgramCourseItem) => (
-                                          <Tooltip title="Xóa học phần khỏi CTĐT">
-                                            <Button
-                                              type="text"
-                                              danger
-                                              icon={<Trash2 size={15} />}
-                                              onClick={() => {
-                                                setProgramCourses(prev => prev.filter(c => c.courseId !== record.courseId));
-                                              }}
-                                              className="text-rose-500 hover:bg-rose-50 rounded-lg w-8 h-8 flex items-center justify-center mx-auto cursor-pointer"
-                                            />
-                                          </Tooltip>
-                                        )
-                                      }
-                                    ] : [])
+                                    }
                                   ]}
                                 />
                               )}
@@ -1099,135 +849,6 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                         })}
                       </div>
                     )}
-
-                    {/* Modal Thêm môn học mới theo Khối kiến thức */}
-                    <Modal
-                      title={
-                        <div className="flex items-center gap-2">
-                          <BookOpen className="w-5 h-5 text-blue-600" />
-                          <span className="font-bold text-slate-800 text-base">Thêm học phần vào Khung chương trình</span>
-                        </div>
-                      }
-                      open={isAddCourseModalOpen}
-                      onCancel={() => {
-                        setIsAddCourseModalOpen(false);
-                        setSelectedCoursesToAdd([]);
-                        setAddCourseSearchText('');
-                      }}
-                      onOk={() => {
-                        if (selectedCoursesToAdd.length === 0) {
-                          message.warning('Vui lòng tích chọn ít nhất một môn học!');
-                          return;
-                        }
-                        const targetStruct = flatStructures.find(s => s.id === selectedStructureIdForAdd);
-                        const newItems: ProgramCourseItem[] = selectedCoursesToAdd.map(cid => {
-                          const foundCourse = courses.find(c => c.id === cid);
-                          return {
-                            courseId: Number(cid),
-                            courseCode: foundCourse?.code || '',
-                            courseName: foundCourse?.name || '',
-                            credits: foundCourse?.credits || 3,
-                            structureId: selectedStructureIdForAdd || null,
-                            structureName: targetStruct ? targetStruct.name : null,
-                            electiveGroupId: null,
-                            electiveGroupName: null,
-                            semester: 1,
-                            required: true,
-                            data: null
-                          };
-                        });
-                        setProgramCourses(prev => [...prev, ...newItems]);
-                        setIsAddCourseModalOpen(false);
-                        setSelectedCoursesToAdd([]);
-                        setAddCourseSearchText('');
-                        message.success(`Đã thêm ${newItems.length} môn học vào ${targetStruct ? `khối "${targetStruct.name}"` : 'khung chương trình'}!`);
-                      }}
-                      okText={`Thêm ${selectedCoursesToAdd.length > 0 ? `(${selectedCoursesToAdd.length})` : ''} môn học`}
-                      cancelText="Hủy bỏ"
-                      width={820}
-                      centered
-                      okButtonProps={{ className: 'rounded-xl h-10 px-6 font-semibold bg-blue-600 hover:bg-blue-700 border-none cursor-pointer' }}
-                      cancelButtonProps={{ className: 'rounded-xl h-10 px-6 font-medium cursor-pointer' }}
-                    >
-                      <div className="py-3 space-y-4">
-                        {/* Chọn Khối kiến thức trước khi thêm */}
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                            Khối kiến thức phân bổ (TT 17/2021/TT-BGDĐT):
-                          </span>
-                          <Select
-                            placeholder="Chọn khối kiến thức để gán..."
-                            className="w-full rounded-xl"
-                            value={selectedStructureIdForAdd}
-                            onChange={setSelectedStructureIdForAdd}
-                            allowClear
-                          >
-                            {flatStructures.map(s => (
-                              <Select.Option key={s.id} value={s.id}>
-                                {s.fullName} {s.creditRequired > 0 ? `(${s.creditRequired} TC)` : ''}
-                              </Select.Option>
-                            ))}
-                          </Select>
-                          <span className="text-[11px] text-slate-400 italic">
-                            Học phần được thêm sẽ tự động gán vào khối kiến thức này và cập nhật tiến độ tín chỉ.
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-4 pt-1">
-                          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                            Danh sách môn học khả dụng ({availableCourses.length})
-                          </span>
-                          <Input.Search
-                            placeholder="Tìm theo mã hoặc tên môn học..."
-                            allowClear
-                            size="middle"
-                            className="w-72 text-xs"
-                            value={addCourseSearchText}
-                            onChange={(e) => setAddCourseSearchText(e.target.value)}
-                          />
-                        </div>
-
-                        <Table
-                          dataSource={filteredAvailableCourses}
-                          rowKey="id"
-                          rowSelection={{
-                            type: 'checkbox',
-                            selectedRowKeys: selectedCoursesToAdd,
-                            onChange: (selectedKeys) => setSelectedCoursesToAdd(selectedKeys as (number | string)[])
-                          }}
-                          pagination={{
-                            pageSize: 6,
-                            showSizeChanger: false,
-                            className: 'px-4 py-2'
-                          }}
-                          size="small"
-                          className="ant-table-custom border border-slate-200/80 rounded-xl overflow-hidden"
-                          columns={[
-                            {
-                              title: 'Mã HP',
-                              dataIndex: 'code',
-                              key: 'code',
-                              width: 120,
-                              render: (code) => <code className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold text-xs font-mono">{code}</code>
-                            },
-                            {
-                              title: 'Tên học phần',
-                              dataIndex: 'name',
-                              key: 'name',
-                              render: (name) => <span className="font-bold text-slate-800 text-xs">{name}</span>
-                            },
-                            {
-                              title: 'Số tín chỉ',
-                              dataIndex: 'credits',
-                              key: 'credits',
-                              width: 90,
-                              align: 'center',
-                              render: (tc) => <span className="font-semibold text-slate-700 text-xs">{tc || 3}</span>
-                            }
-                          ]}
-                        />
-                      </div>
-                    </Modal>
                   </div>
                 );
               })()
@@ -1243,14 +864,7 @@ export default function ProgramDetailView({ programId, onBack }: ProgramDetailVi
                 </span>
               ),
               children: !isNew && program ? (
-                <div className="py-6 space-y-4">
-                  <Alert
-                    message="Chuẩn đầu ra OBE và Ma trận tích hợp"
-                    description="Chuẩn đầu ra chương trình đào tạo (PLO, PI) và ma trận ánh xạ học phần được đồng bộ tự động từ Quy trình Xây dựng CTĐT (Bước 2: Chuẩn đầu ra PLO & Bước 6: Ma trận tích hợp). Dữ liệu dưới đây hiển thị phục vụ theo dõi và tra cứu."
-                    type="info"
-                    showIcon
-                    className="rounded-2xl border-blue-200 bg-blue-50/70"
-                  />
+                <div className="py-4">
                   <ProgramObeTabs
                     programId={program.id}
                     obeData={obeData}

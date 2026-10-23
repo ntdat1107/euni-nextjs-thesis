@@ -10,28 +10,29 @@ import S6MatrixRenderer from './renderers/S6MatrixRenderer';
 export type { S1SurveyBuilderRef, S1SurveyBuilderRendererProps };
 
 // --- S1_KHAO_SAT_NHU_CAU Renderer ---
-export const S1_KHAO_SAT_NHU_CAU_Renderer = forwardRef<
-  S1SurveyBuilderRef,
-  S1SurveyBuilderRendererProps
->(({ step, readonly, data, onChange, onRefreshStep, onFormLoaded }, ref) => {
-  return (
-    <S1SurveyBuilderRenderer
-      ref={ref}
-      step={step}
-      readonly={readonly}
-      data={data}
-      onChange={onChange}
-      onRefreshStep={onRefreshStep}
-      onFormLoaded={onFormLoaded}
-    />
-  );
-});
+export const S1_KHAO_SAT_NHU_CAU_Renderer = React.memo(
+  forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRendererProps>(
+    ({ step, readonly, data, onChange, onRefreshStep, onFormLoaded }, ref) => {
+      return (
+        <S1SurveyBuilderRenderer
+          ref={ref}
+          step={step}
+          readonly={readonly}
+          data={data}
+          onChange={onChange}
+          onRefreshStep={onRefreshStep}
+          onFormLoaded={onFormLoaded}
+        />
+      );
+    }
+  )
+);
 S1_KHAO_SAT_NHU_CAU_Renderer.displayName = 'S1_KHAO_SAT_NHU_CAU_Renderer';
 
 // --- S2_PLO Renderer ---
-export const S2_PLO_Renderer = forwardRef<S2PLORef, { step?: any; readonly: boolean; data?: any; onChange?: (data: any) => void }>(
-  ({ readonly, data, onChange }, ref) => {
-    return <S2PLORenderer ref={ref} data={data} readonly={readonly} onChange={onChange} />;
+export const S2_PLO_Renderer = forwardRef<S2PLORef, { step?: any; campaign?: any; readonly: boolean; data?: any; onChange?: (data: any) => void }>(
+  ({ campaign, readonly, data, onChange }, ref) => {
+    return <S2PLORenderer ref={ref} campaign={campaign} data={data} readonly={readonly} onChange={onChange} />;
   }
 );
 S2_PLO_Renderer.displayName = 'S2_PLO_Renderer';

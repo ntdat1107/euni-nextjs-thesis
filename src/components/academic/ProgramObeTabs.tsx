@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import {
   Table,
-  Card,
   Tabs,
   Tag,
   Typography,
@@ -87,26 +86,26 @@ export default function ProgramObeTabs({
   // Tab 1: Danh sách Phân cấp PO - PLO - PI
   const renderHierarchicalList = () => {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Objectives (PO) */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b pb-3">
+        <div className="bg-white rounded-xl p-4 border border-slate-200/80 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
             <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-blue-600" />
-              <Title level={5} className="!mb-0 text-slate-800">1. Mục tiêu Đào tạo (Program Objectives - PO)</Title>
+              <Award className="w-4 h-4 text-blue-600" />
+              <Title level={5} className="!mb-0 text-slate-800 text-sm">1. Mục tiêu Đào tạo (Program Objectives - PO)</Title>
             </div>
-            <Tag color="blue" className="rounded-full px-3 py-0.5 border-none font-bold text-xs">
+            <Tag color="blue" className="rounded-full px-2.5 py-0.5 border-none font-bold text-xs">
               {obeData.objectives.length} Mục tiêu
             </Tag>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {obeData.objectives.map((po) => (
-              <div key={po.id} className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/70 space-y-2">
+              <div key={po.id} className="p-3 bg-slate-50/70 rounded-lg border border-slate-200/70 space-y-1.5">
                 <Tag color="cyan" className="font-mono font-bold text-xs rounded-md px-2 py-0.5">
                   {po.code}
                 </Tag>
-                <p className="text-slate-700 text-sm leading-relaxed font-medium">
+                <p className="text-slate-700 text-xs leading-relaxed font-medium">
                   {po.content}
                 </p>
               </div>
@@ -115,47 +114,64 @@ export default function ProgramObeTabs({
         </div>
 
         {/* Learning Outcomes (PLO) & Performance Indicators (PI) */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b pb-3">
+        <div className="bg-white rounded-xl p-4 border border-slate-200/80 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <Title level={5} className="!mb-0 text-slate-800">2. Chuẩn đầu ra (PLO) &amp; Chỉ số thực hiện (PI)</Title>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <Title level={5} className="!mb-0 text-slate-800 text-sm">2. Chuẩn đầu ra (PLO) &amp; Chỉ số thực hiện (PI)</Title>
             </div>
-            <Tag color="green" className="rounded-full px-3 py-0.5 border-none font-bold text-xs">
+            <Tag color="green" className="rounded-full px-2.5 py-0.5 border-none font-bold text-xs">
               {obeData.learningOutcomes.length} PLO · {allPis.length} PI
             </Tag>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {obeData.learningOutcomes.map((plo) => (
-              <Card key={plo.id} size="small" className="rounded-xl border border-slate-200/80 shadow-2xs bg-slate-50/40">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2 mb-3">
+              <div key={plo.id} className="rounded-xl border border-slate-200/70 p-3.5 bg-slate-50/40 space-y-2.5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
                   <div className="flex items-center gap-2">
                     <Tag color="blue" className="font-mono font-bold text-xs rounded-md px-2 py-0.5">
                       {plo.code}
                     </Tag>
                     <span className="font-bold text-slate-800 text-sm">{plo.name || plo.content}</span>
                   </div>
-                  <Tag color={plo.domain === 'KNOWLEDGE' ? 'magenta' : plo.domain === 'SKILL' ? 'geekblue' : 'gold'} className="rounded-full font-semibold border-none text-[11px]">
-                    {plo.domain === 'KNOWLEDGE' ? 'Kiến thức' : plo.domain === 'SKILL' ? 'Kỹ năng' : 'Thái độ'}
+                  <Tag
+                    color={
+                      plo.domain === 'KNOWLEDGE'
+                        ? 'blue'
+                        : plo.domain === 'SKILL'
+                        ? 'cyan'
+                        : plo.domain === 'AUTONOMY'
+                        ? 'purple'
+                        : 'gold'
+                    }
+                    className="rounded-full font-semibold border-none text-[11px]"
+                  >
+                    {plo.domain === 'KNOWLEDGE'
+                      ? 'Kiến thức'
+                      : plo.domain === 'SKILL'
+                      ? 'Kỹ năng'
+                      : plo.domain === 'AUTONOMY'
+                      ? 'Năng lực'
+                      : 'Phẩm chất'}
                   </Tag>
                 </div>
 
-                <div className="text-slate-600 text-sm mb-3">
+                <div className="text-slate-600 text-xs">
                   {plo.content}
                 </div>
 
                 {/* Sub-PIs */}
-                <div className="pl-4 border-l-2 border-blue-200 space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">Chỉ số thực hiện cụ thể (PI):</span>
+                <div className="pl-3 border-l-2 border-blue-200 space-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Chỉ số thực hiện cụ thể (PI):</span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {(plo.indicators || []).map((pi) => (
-                      <div key={pi.id} className="p-2.5 bg-white rounded-lg border border-slate-200/80 flex items-start gap-2.5 shadow-2xs">
+                      <div key={pi.id} className="p-2.5 bg-white rounded-lg border border-slate-200/80 flex items-start gap-2">
                         <Tag color="purple" className="font-mono font-bold text-[11px] rounded px-1.5 shrink-0 mt-0.5">
                           {pi.code}
                         </Tag>
                         <div className="flex-1">
-                          <p className="text-xs text-slate-700 font-medium leading-relaxed mb-1">{pi.content}</p>
+                          <p className="text-xs text-slate-700 font-medium leading-relaxed mb-0.5">{pi.content}</p>
                           {pi.bloomLevel && (
                             <span className="text-[10px] font-semibold text-slate-400 uppercase">
                               Thang đo Bloom: {pi.bloomLevel}
@@ -166,7 +182,7 @@ export default function ProgramObeTabs({
                     ))}
                   </div>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </div>
@@ -231,7 +247,7 @@ export default function ProgramObeTabs({
     }));
 
     return (
-      <Card className="rounded-2xl border border-slate-200/90 shadow-2xs">
+      <div className="rounded-xl border border-slate-200/80 overflow-hidden bg-white">
         <Table
           columns={columns}
           dataSource={data}
@@ -239,7 +255,7 @@ export default function ProgramObeTabs({
           scroll={{ x: 800 }}
           size="middle"
         />
-      </Card>
+      </div>
     );
   };
 
@@ -336,9 +352,9 @@ export default function ProgramObeTabs({
         )}
 
         {/* Matrix Table */}
-        <Card className="rounded-2xl border border-slate-200/90 shadow-2xs">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs text-slate-500">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-500">
+            <span>
               Quy ước trọng số: <b>1 (I - Introduce)</b>: Giới thiệu · <b>2 (T - Teach)</b>: Giảng dạy / Phát triển · <b>3 (U - Utilize)</b>: Vận dụng / Thành thạo.
             </span>
             <Button size="small" onClick={onRefresh} loading={updatingMatrix}>
@@ -353,7 +369,7 @@ export default function ProgramObeTabs({
             scroll={{ x: 1200 }}
             size="small"
           />
-        </Card>
+        </div>
       </div>
     );
   };
