@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  User, Mail, Shield, Calendar, Pencil, Lock, LogOut, Save, X, RefreshCw, Sparkles 
+  User, Mail, Shield, Calendar, Pencil, Lock, LogOut, Save, X, RefreshCw, Bot 
 } from 'lucide-react';
-import { Avatar, Button, Card, Tag, Input, Typography, App, Space, Divider, Modal, Form, Tabs } from 'antd';
+import { Avatar, Button, Card, Tag, Input, Typography, App, Space, Divider, Modal, Form } from 'antd';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { authService } from '@/services/authService';
 import { apiClient } from '@/services/api';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,6 @@ import AppShell from '@/components/layout/AppShell';
 import { userService } from '@/services/userService';
 import { roleCache } from '@/lib/roleCache';
 import { Role } from '@/services/rbacService';
-import AiSettingsSection from '@/components/profile/AiSettingsSection';
 
 const { Title, Text } = Typography;
 
@@ -195,186 +195,175 @@ export default function ProfilePage() {
           </div>
 
           {/* Right: Detail */}
-          <div className="lg:col-span-2">
-            <Tabs 
-              defaultActiveKey="info"
-              items={[
-                {
-                  key: 'info',
-                  label: (
-                    <span className="flex items-center gap-2 font-semibold">
-                      <User className="w-4 h-4" /> Thông tin & Bảo mật
-                    </span>
-                  ),
-                  children: (
-                    <div className="flex flex-col gap-8 pt-2">
-                      <Card 
-                        className="shadow-sm border-slate-200" 
-                        title={<span className="text-base font-bold text-slate-800">Thông tin tài khoản</span>}
-                        extra={
-                          !editMode && (
-                            <Button 
-                              type="link" 
-                              icon={<Pencil className="w-3.5 h-3.5" />} 
-                              onClick={() => setEditMode(true)}
-                              className="font-bold flex items-center"
-                            >
-                              Chỉnh sửa
-                            </Button>
-                          )
-                        }
-                      >
-                        {!editMode ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 py-2">
-                            <div className="flex items-start gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
-                                <User className="w-5 h-5 text-slate-500" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tên đăng nhập</p>
-                                <p className="text-sm font-bold text-slate-900 truncate">{currentUser.username || '—'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-start gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
-                                <Mail className="w-5 h-5 text-slate-500" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Email</p>
-                                <p className="text-sm font-bold text-slate-900 truncate">{currentUser.email || 'Chưa cập nhật'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-start gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
-                                <Shield className="w-5 h-5 text-slate-500" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Vai trò</p>
-                                <div className="mt-0.5">
-                                  <Tag color={roleColor} className="rounded-full px-3 py-0 border-0 font-bold text-[10px] uppercase">
-                                    {roleLabel}
-                                  </Tag>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-start gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
-                                <Calendar className="w-5 h-5 text-slate-500" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">ID tài khoản</p>
-                                <p className="text-[13px] font-mono font-bold text-slate-600 truncate">{currentUser.id || '—'}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-5 py-2">
-                            <div className="space-y-2">
-                              <label className="text-sm font-bold text-slate-700">Tên đăng nhập</label>
-                              <Input 
-                                value={currentUser.username} 
-                                disabled 
-                                className="h-10 rounded-lg bg-slate-50 font-bold" 
-                              />
-                              <Text type="secondary" className="text-[11px]">Tên đăng nhập không thể thay đổi</Text>
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm font-bold text-slate-700">Họ và tên</label>
-                              <Input 
-                                value={currentUser.fullName} 
-                                disabled 
-                                className="h-10 rounded-lg bg-slate-50 font-bold" 
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm font-bold text-slate-700">Email</label>
-                              <Input 
-                                value={editEmail} 
-                                onChange={(e) => setEditEmail(e.target.value)}
-                                placeholder="Nhập địa chỉ email..."
-                                className="h-10 rounded-lg focus:ring-2 focus:ring-edu-primary/20"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-4">
-                              <Button 
-                                type="primary" 
-                                icon={<Save className="w-4 h-4" />} 
-                                onClick={saveProfile}
-                                loading={saving}
-                                className="bg-edu-primary h-10 rounded-lg font-bold px-6 border-0"
-                              >
-                                Lưu thay đổi
-                              </Button>
-                              <Button 
-                                icon={<X className="w-4 h-4" />} 
-                                onClick={() => setEditMode(false)}
-                                disabled={saving}
-                                className="h-10 rounded-lg font-bold border-slate-200"
-                              >
-                                Hủy
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </Card>
-
-                      <Card 
-                        className="shadow-sm border-slate-200" 
-                        title={<span className="text-base font-bold text-slate-800">Bảo mật</span>}
-                      >
-                        <div className="space-y-2 divide-y divide-slate-100">
-                          <div className="flex items-center justify-between py-4 first:pt-0">
-                            <div className="min-w-0 pr-4">
-                              <p className="text-sm font-bold text-slate-900 mb-0.5">Mật khẩu</p>
-                              <p className="text-xs text-slate-500">Đổi mật khẩu để bảo vệ tài khoản</p>
-                            </div>
-                            <Button 
-                              onClick={() => setIsPassModalOpen(true)}
-                              className="font-bold border-slate-200 h-9"
-                            >
-                              Đổi mật khẩu
-                            </Button>
-                          </div>
-                          <div className="flex items-center justify-between py-4">
-                            <div>
-                              <p className="text-sm font-bold text-slate-900 mb-0.5">Xác thực 2 bước</p>
-                              <p className="text-xs text-slate-500">Thêm lớp bảo mật cho tài khoản</p>
-                            </div>
-                            <Tag color="default" className="rounded-full px-3 py-0.5 border-0 font-bold text-[10px] uppercase">Sắp ra mắt</Tag>
-                          </div>
-                          <div className="flex items-center justify-between py-4 last:pb-0">
-                            <div>
-                              <p className="text-sm font-bold text-slate-900 mb-0.5">Phiên đăng nhập</p>
-                              <p className="text-xs text-slate-500">Quản lý các thiết bị đã đăng nhập</p>
-                            </div>
-                            <Tag color="default" className="rounded-full px-3 py-0.5 border-0 font-bold text-[10px] uppercase">Sắp ra mắt</Tag>
-                          </div>
-                        </div>
-                      </Card>
+          <div className="lg:col-span-2 space-y-6">
+            <Card 
+              className="shadow-sm border-slate-200" 
+              title={<span className="text-base font-bold text-slate-800">Thông tin tài khoản</span>}
+              extra={
+                !editMode && (
+                  <Button 
+                    type="link" 
+                    icon={<Pencil className="w-3.5 h-3.5" />} 
+                    onClick={() => setEditMode(true)}
+                    className="font-bold flex items-center"
+                  >
+                    Chỉnh sửa
+                  </Button>
+                )
+              }
+            >
+              {!editMode ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 py-2">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
+                      <User className="w-5 h-5 text-slate-500" />
                     </div>
-                  ),
-                },
-                {
-                  key: 'ai',
-                  label: (
-                    <span className="flex items-center gap-2 font-semibold text-blue-600">
-                      <Sparkles className="w-4 h-4 text-blue-600" /> Cấu hình AI cá nhân (BYOK)
-                    </span>
-                  ),
-                  children: (
-                    <div className="pt-2">
-                      <AiSettingsSection />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tên đăng nhập</p>
+                      <p className="text-sm font-bold text-slate-900 truncate">{currentUser.username || '—'}</p>
                     </div>
-                  ),
-                },
-              ]}
-            />
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
+                      <Mail className="w-5 h-5 text-slate-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Email</p>
+                      <p className="text-sm font-bold text-slate-900 truncate">{currentUser.email || 'Chưa cập nhật'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
+                      <Shield className="w-5 h-5 text-slate-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Vai trò</p>
+                      <div className="mt-0.5">
+                        <Tag color={roleColor} className="rounded-full px-3 py-0 border-0 font-bold text-[10px] uppercase">
+                          {roleLabel}
+                        </Tag>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
+                      <Calendar className="w-5 h-5 text-slate-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">ID tài khoản</p>
+                      <p className="text-[13px] font-mono font-bold text-slate-600 truncate">{currentUser.id || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5 py-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Tên đăng nhập</label>
+                    <Input 
+                      value={currentUser.username} 
+                      disabled 
+                      className="h-10 rounded-lg bg-slate-50 font-bold" 
+                    />
+                    <Text type="secondary" className="text-[11px]">Tên đăng nhập không thể thay đổi</Text>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Họ và tên</label>
+                    <Input 
+                      value={currentUser.fullName} 
+                      disabled 
+                      className="h-10 rounded-lg bg-slate-50 font-bold" 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Email</label>
+                    <Input 
+                      value={editEmail} 
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="Nhập địa chỉ email..."
+                      className="h-10 rounded-lg focus:ring-2 focus:ring-edu-primary/20"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-4">
+                    <Button 
+                      type="primary" 
+                      icon={<Save className="w-4 h-4" />} 
+                      onClick={saveProfile}
+                      loading={saving}
+                      className="bg-edu-primary h-10 rounded-lg font-bold px-6 border-0"
+                    >
+                      Lưu thay đổi
+                    </Button>
+                    <Button 
+                      icon={<X className="w-4 h-4" />} 
+                      onClick={() => setEditMode(false)}
+                      disabled={saving}
+                      className="h-10 rounded-lg font-bold border-slate-200"
+                    >
+                      Hủy
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            <Card 
+              className="shadow-sm border-slate-200" 
+              title={<span className="text-base font-bold text-slate-800">Bảo mật</span>}
+            >
+              <div className="space-y-2 divide-y divide-slate-100">
+                <div className="flex items-center justify-between py-4 first:pt-0">
+                  <div className="min-w-0 pr-4">
+                    <p className="text-sm font-bold text-slate-900 mb-0.5">Mật khẩu</p>
+                    <p className="text-xs text-slate-500">Đổi mật khẩu để bảo vệ tài khoản</p>
+                  </div>
+                  <Button 
+                    onClick={() => setIsPassModalOpen(true)}
+                    className="font-bold border-slate-200 h-9"
+                  >
+                    Đổi mật khẩu
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between py-4">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 mb-0.5">Xác thực 2 bước</p>
+                    <p className="text-xs text-slate-500">Thêm lớp bảo mật cho tài khoản</p>
+                  </div>
+                  <Tag color="default" className="rounded-full px-3 py-0.5 border-0 font-bold text-[10px] uppercase">Sắp ra mắt</Tag>
+                </div>
+                <div className="flex items-center justify-between py-4 last:pb-0">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 mb-0.5">Phiên đăng nhập</p>
+                    <p className="text-xs text-slate-500">Quản lý các thiết bị đã đăng nhập</p>
+                  </div>
+                  <Tag color="default" className="rounded-full px-3 py-0.5 border-0 font-bold text-[10px] uppercase">Sắp ra mắt</Tag>
+                </div>
+              </div>
+            </Card>
+
+            {/* Quick link banner to AI Settings */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50/70 to-indigo-50/50 border border-blue-100 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-slate-900 text-xs mb-0.5">Cấu hình Trí tuệ Nhân tạo (BYOK)</h5>
+                  <p className="text-[11px] text-slate-500 mb-0">Thiết lập API Key cá nhân và mô hình AI nay đã được đưa ra thanh điều hướng chính.</p>
+                </div>
+              </div>
+              <Link 
+                href="/ai-settings" 
+                className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-blue-600 hover:border-blue-400 hover:bg-blue-50 transition-colors whitespace-nowrap shadow-2xs"
+              >
+                Mở Cấu hình AI →
+              </Link>
+            </div>
           </div>
         </div>
       </div>

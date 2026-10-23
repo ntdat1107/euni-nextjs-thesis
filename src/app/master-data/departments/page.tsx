@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useFaculties } from '@/hooks/useFaculties';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 import { Department } from '@/types/academic';
 
 const { Title, Text } = Typography;
@@ -155,10 +154,6 @@ function DepartmentManagementContent() {
     },
   ];
 
-  if (isLoading) {
-    return <TableSkeleton rows={10} columns={4} />;
-  }
-
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -217,6 +212,7 @@ function DepartmentManagementContent() {
           <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg cursor-pointer" />
         </div>
         <Table
+          loading={isLoading}
           dataSource={filteredDepartments}
           columns={columns}
           rowKey="id"

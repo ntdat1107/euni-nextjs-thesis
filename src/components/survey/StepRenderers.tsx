@@ -1,36 +1,32 @@
 'use client';
 
 import React, { forwardRef } from 'react';
-import S1SurveyBuilderRenderer from './renderers/S1SurveyBuilderRenderer';
+import S1SurveyBuilderRenderer, { S1SurveyBuilderRef, S1SurveyBuilderRendererProps } from './renderers/S1SurveyBuilderRenderer';
 import S2PLORenderer, { S2PLORef } from './renderers/S2PLORenderer';
 import S3StructureCourseRenderer from './renderers/S3StructureCourseRenderer';
 import S5CLORenderer from './renderers/S5CLORenderer';
 import S6MatrixRenderer from './renderers/S6MatrixRenderer';
 
+export type { S1SurveyBuilderRef, S1SurveyBuilderRendererProps };
+
 // --- S1_KHAO_SAT_NHU_CAU Renderer ---
-export function S1_KHAO_SAT_NHU_CAU_Renderer({
-  step,
-  readonly,
-  data,
-  onChange,
-  onRefreshStep,
-}: {
-  step: any;
-  readonly: boolean;
-  data?: any;
-  onChange?: (data: any) => void;
-  onRefreshStep?: () => void;
-}) {
+export const S1_KHAO_SAT_NHU_CAU_Renderer = forwardRef<
+  S1SurveyBuilderRef,
+  S1SurveyBuilderRendererProps
+>(({ step, readonly, data, onChange, onRefreshStep, onFormLoaded }, ref) => {
   return (
     <S1SurveyBuilderRenderer
+      ref={ref}
       step={step}
       readonly={readonly}
       data={data}
       onChange={onChange}
       onRefreshStep={onRefreshStep}
+      onFormLoaded={onFormLoaded}
     />
   );
-}
+});
+S1_KHAO_SAT_NHU_CAU_Renderer.displayName = 'S1_KHAO_SAT_NHU_CAU_Renderer';
 
 // --- S2_PLO Renderer ---
 export const S2_PLO_Renderer = forwardRef<S2PLORef, { step?: any; readonly: boolean; data?: any; onChange?: (data: any) => void }>(

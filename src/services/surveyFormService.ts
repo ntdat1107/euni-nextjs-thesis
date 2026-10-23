@@ -7,6 +7,13 @@ export type SurveyQuestionType =
   | 'MULTIPLE_CHOICE'
   | 'LIKERT_SCALE';
 
+export type SurveyFormStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'APPROVED'
+  | 'PUBLISHED'
+  | 'CLOSED';
+
 export interface SurveyOption {
   id?: number;
   content: string;
@@ -43,15 +50,31 @@ export interface SurveyForm {
   title: string;
   description?: string;
   targetAudience?: string;
-  publicSlug: string;
-  publicUrl: string;
-  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED';
+  publicSlug?: string;
+  publicUrl?: string;
+  status: SurveyFormStatus;
+  version: number;
+  isCurrent: boolean;
+  previousVersionId?: number;
   anonymous: boolean;
   startDate?: string;
   endDate?: string;
   totalSubmissions: number;
   sections: SurveySection[];
   directQuestions: SurveyQuestion[];
+}
+
+export interface SurveyFormVersionItem {
+  id: number;
+  campaignStepId: number;
+  version: number;
+  status: SurveyFormStatus;
+  title: string;
+  publicSlug?: string;
+  totalSubmissions: number;
+  isCurrent: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SurveyFormSaveRequest {
@@ -114,8 +137,8 @@ export interface SurveySummary {
   formId: number;
   formTitle: string;
   totalSubmissions: number;
-  publicSlug: string;
-  publicUrl: string;
+  publicSlug?: string;
+  publicUrl?: string;
   status: string;
   questionStats: QuestionStat[];
 }
@@ -129,20 +152,56 @@ export const surveyFormService = {
     return await api.post(`/v1/survey-forms/step/${stepId}`, data);
   },
 
+  submitReview: async (stepId: number | string): Promise<SurveyForm> => {
+    return await api.post(`/v1/survey-forms/step/${stepId}/submit-review`);
+  },
+
+  approveDesign: async (stepId: number | string): Promise<SurveyForm> => {
+    return await api.post(`/v1/survey-forms/step/${stepId}/approve-design`);
+  },
+
+  recallSubmission: async (stepId: number | string): Promise<SurveyForm> => {
+    return await api.post(`/v1/survey-forms/step/${stepId}/recall`);
+  },
+
+  rejectDesign: async (stepId: number | string, reason?: string): Promise<SurveyForm> => {
+    return await api.post(`/v1/survey-forms/step/${stepId}/reject-design`, { reason: reason || '' });
+  },
+
   publishForm: async (stepId: number | string): Promise<SurveyForm> => {
     return await api.post(`/v1/survey-forms/step/${stepId}/publish`);
+  },
+
+  requestRevision: async (stepId: number | string): Promise<SurveyForm> => {
+    return await api.post(`/v1/survey-forms/step/${stepId}/request-revision`);
   },
 
   closeForm: async (stepId: number | string): Promise<SurveyForm> => {
     return await api.post(`/v1/survey-forms/step/${stepId}/close`);
   },
 
+  getFormVersions: async (stepId: number | string): Promise<SurveyFormVersionItem[]> => {
+    return await api.get(`/v1/survey-forms/step/${stepId}/versions`);
+  },
+
+  getFormById: async (formId: number | string): Promise<SurveyForm> => {
+    return await api.get(`/v1/survey-forms/version/${formId}`);
+  },
+
   getSubmissions: async (stepId: number | string): Promise<SurveySubmissionItem[]> => {
     return await api.get(`/v1/survey-forms/step/${stepId}/submissions`);
   },
 
+  getSubmissionsByFormId: async (formId: number | string): Promise<SurveySubmissionItem[]> => {
+    return await api.get(`/v1/survey-forms/version/${formId}/submissions`);
+  },
+
   getSummary: async (stepId: number | string): Promise<SurveySummary> => {
     return await api.get(`/v1/survey-forms/step/${stepId}/summary`);
+  },
+
+  getSummaryByFormId: async (formId: number | string): Promise<SurveySummary> => {
+    return await api.get(`/v1/survey-forms/version/${formId}/summary`);
   },
 
   // Public APIs for anonymous respondents

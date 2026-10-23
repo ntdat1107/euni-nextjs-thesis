@@ -114,10 +114,11 @@ export const surveyCampaignService = {
     return api.get(`/survey/campaigns/check-code?code=${code}`);
   },
 
-  saveStepData: async (campaignId: number | string, stepId: number | string, resultData: any, status?: string): Promise<SurveyCampaignStepResponse> => {
+  saveStepData: async (campaignId: number | string, stepId: number | string, resultData: any, status?: string, reviewNote?: string): Promise<SurveyCampaignStepResponse> => {
     return api.post(`/survey/campaigns/${campaignId}/steps/${stepId}/save`, { 
       resultData: typeof resultData === 'string' ? resultData : JSON.stringify(resultData),
-      status: status || 'COMPLETED'
+      status: status || 'COMPLETED',
+      reviewNote: reviewNote
     });
   },
 

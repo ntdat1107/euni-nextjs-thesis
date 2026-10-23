@@ -221,7 +221,11 @@ export default function Sidebar({
                         <li key={child.id} className="relative">
                           <Link
                             href={child.path || '#'}
-                            prefetch={false}
+                            onClick={() => {
+                              if (child.path && child.path !== activePath) {
+                                onNavigate?.(child.path);
+                              }
+                            }}
                             className={cn(
                               'block pl-11 pr-4 py-2 rounded-lg text-sm transition-all duration-200',
                               isActive(child.path)
@@ -242,7 +246,11 @@ export default function Sidebar({
               ) : (
                 <Link
                   href={item.path || '#'}
-                  prefetch={false}
+                  onClick={() => {
+                    if (item.path && item.path !== activePath) {
+                      onNavigate?.(item.path);
+                    }
+                  }}
                   className={cn(
                     'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 group',
                     isActive(item.path)

@@ -29,7 +29,6 @@ import {
 import { Role } from '@/services/rbacService';
 import { useRBAC } from '@/hooks/useRBAC';
 import { useUsers } from '@/hooks/useUsers';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 import { SIDEBAR_PAGES, NAV_PAGES, NavPageItem } from '@/constants/navigationPages';
 
 const { Title, Text } = Typography;
@@ -201,10 +200,6 @@ function RBACContent() {
     return editingRole.code.replace(/^ROLE_/, '').toUpperCase();
   }, [editingRole]);
 
-  if (isLoading) {
-    return <TableSkeleton rows={8} columns={5} />;
-  }
-
   return (
     <>
       <div className="flex flex-col gap-6">
@@ -275,6 +270,7 @@ function RBACContent() {
           </div>
 
           <Table 
+            loading={isLoading}
             dataSource={filteredRoles} 
             rowKey="id"
             scroll={{ x: 'max-content' }}

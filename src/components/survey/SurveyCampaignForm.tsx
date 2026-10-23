@@ -11,7 +11,7 @@ import {
 import {
   ArrowLeft, Save, CheckCircle2,
   Settings, FileText, Users, Calendar, Info, Loader2,
-  ChevronRight, ChevronUp, ChevronDown, PlayCircle, ClipboardList, Clock, AlertCircle, Edit, BookOpen, Ban
+  ChevronRight, PlayCircle, ClipboardList, Clock, AlertCircle, Edit, Ban
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { programService } from '@/services/programService';
@@ -20,7 +20,7 @@ import workflowService, { WorkflowTemplateResponse } from '@/services/workflowSe
 import { surveyCampaignService, SurveyCampaignRequest } from '@/services/surveyCampaignService';
 import { rbacService, Role } from '@/services/rbacService';
 import { workflowDefinitionService, WorkflowStepDefinitionResponse } from '@/services/workflowDefinitionService';
-
+import { resolveStepStatus, getStepLockReason, WORKFLOW_STEP_STATUS_MAP, getStepCustomBadge } from '@/constants/workflowStepStatus';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -141,11 +141,11 @@ export default function SurveyCampaignForm() {
     try {
       setIsSubmitting(true);
       await surveyCampaignService.approve(id);
-      message.success('Đã phê duyệt đợt khảo sát và đồng bộ dữ liệu Master Data thành công!');
+      message.success('Đã hoàn tất quy trình xây dựng chương trình đào tạo thành công!');
       const data = await surveyCampaignService.getById(id);
       setCampaignData(data);
     } catch (error: any) {
-      message.error(error.message || 'Lỗi khi phê duyệt đợt khảo sát');
+      message.error(error.message || 'Lỗi khi hoàn tất quy trình');
     } finally {
       setIsSubmitting(false);
     }
@@ -239,7 +239,7 @@ export default function SurveyCampaignForm() {
         programId: values.programId || campaignData?.programId,
         workflowTemplateId: workflowId || selectedWorkflowId || campaignData?.workflowTemplateId,
         code: values.code || `CAM-${Date.now()}`,
-        status: isNew ? 'ACTIVE' : (values.status || 'ACTIVE'),
+        status: isNew ? 'IN_PROGRESS' : (values.status || 'IN_PROGRESS'),
         startDate: range?.[0] ? range[0].toISOString() : dayjs().toISOString(),
         endDate: range?.[1] ? range[1].toISOString() : dayjs().add(1, 'month').toISOString(),
         steps: workflowSteps.map((s, idx) => ({
@@ -260,7 +260,7 @@ export default function SurveyCampaignForm() {
         message.success('Đã cập nhật đợt khảo sát!');
       }
 
-      router.push(`/survey/campaigns/${result.id}?mode=view`);
+      router.push(`/curriculum/development/${result.id}?mode=view`);
     } catch (error: any) {
       const errorMsg = error?.response?.data?.message || error?.message || 'Lỗi khi lưu dữ liệu';
       Modal.error({
@@ -278,9 +278,6 @@ export default function SurveyCampaignForm() {
     }
   };
 
-  const [courseSearchText, setCourseSearchText] = useState('');
-  const [courseStatusFilter, setCourseStatusFilter] = useState<'ALL' | 'SET' | 'UNSET'>('ALL');
-  const [isS5Expanded, setIsS5Expanded] = useState(false);
 
   const renderExecutionProgress = () => {
     return (
@@ -311,263 +308,98 @@ export default function SurveyCampaignForm() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {workflowSteps.length > 0 ? workflowSteps.map((step, idx) => {
-                const stepResult = typeof step.resultData === 'string' ? JSON.parse(step.resultData) : (step.resultData || {});
-                
-                const filteredCourses = programCourses.filter((course: any) => {
-                  const courseCloData = stepResult?.[course.id]?.clos || stepResult?.[course.id] || [];
-                  const hasClo = Array.isArray(courseCloData) && courseCloData.length > 0;
-
-                  if (courseStatusFilter === 'SET' && !hasClo) return false;
-                  if (courseStatusFilter === 'UNSET' && hasClo) return false;
-
-                  if (!courseSearchText.trim()) return true;
-                  const term = courseSearchText.toLowerCase();
-                  return (
-                    (course.name && course.name.toLowerCase().includes(term)) ||
-                    (course.code && course.code.toLowerCase().includes(term))
-                  );
-                });
-
                 return (
-                  <React.Fragment key={step.id || idx}>
-                    <tr 
-                      className={`hover:bg-slate-50/50 transition-colors group ${
-                        step.configuration?.screenCode === 'S5_CLO' ? 'cursor-pointer select-none bg-blue-50/20' : ''
-                      }`}
-                      onClick={() => {
-                        if (step.configuration?.screenCode === 'S5_CLO') {
-                          setIsS5Expanded(!isS5Expanded);
-                        }
-                      }}
-                    >
-                      <td className="px-3 py-4 text-center font-bold text-slate-300 group-hover:text-blue-400 transition-colors">
-                        {(idx + 1).toString().padStart(2, '0')}
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex flex-col pr-2">
-                          <Text className="font-semibold text-slate-700 leading-snug line-clamp-2">{step.title}</Text>
-                          {step.configuration?.screenCode && (
-                            <Text className="text-[10px] text-slate-400 font-mono mt-0.5">CODE: {step.configuration.screenCode}</Text>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex flex-col gap-1 items-start max-w-full">
-                          {step.requiredDocuments?.map((doc: string, dIdx: number) => (
-                            <Tag 
-                              key={dIdx} 
-                              className="bg-slate-50 border-slate-200 text-slate-600 text-[11px] rounded-md max-w-full truncate m-0 font-normal py-0.5 px-2"
-                              title={doc}
-                            >
-                              {doc}
+                  <tr 
+                    key={step.id || idx}
+                    className="hover:bg-slate-50/50 transition-colors group"
+                  >
+                    <td className="px-3 py-4 text-center font-bold text-slate-300 group-hover:text-blue-400 transition-colors">
+                      {(idx + 1).toString().padStart(2, '0')}
+                    </td>
+                    <td className="px-3 py-4">
+                      <div className="flex flex-col pr-2">
+                        <Text className="font-semibold text-slate-700 leading-snug line-clamp-2">{step.title}</Text>
+                      </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      <div className="flex flex-col gap-1 items-start max-w-full">
+                        {step.requiredDocuments?.map((doc: string, dIdx: number) => (
+                          <Tag 
+                            key={dIdx} 
+                            className="bg-slate-50 border-slate-200 text-slate-600 text-[11px] rounded-md max-w-full truncate m-0 font-normal py-0.5 px-2"
+                            title={doc}
+                          >
+                            {doc}
+                          </Tag>
+                        ))}
+                        {(!step.requiredDocuments || step.requiredDocuments.length === 0) && (
+                          <Text type="secondary" className="text-xs italic">Không có</Text>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {Array.isArray(step.configuration?.performerRoles) && step.configuration.performerRoles.length > 0 ? (
+                          step.configuration.performerRoles.map((rCode: string, rIdx: number) => (
+                            <Tag key={rIdx} color="emerald" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-800 font-medium text-xs m-0">
+                              {roles.find(r => r.code === rCode)?.name || rCode}
                             </Tag>
-                          ))}
-                          {(!step.requiredDocuments || step.requiredDocuments.length === 0) && (
-                            <Text type="secondary" className="text-xs italic">Không có</Text>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex flex-wrap gap-1">
-                          {Array.isArray(step.configuration?.performerRoles) && step.configuration.performerRoles.length > 0 ? (
-                            step.configuration.performerRoles.map((rCode: string, rIdx: number) => (
-                              <Tag key={rIdx} color="emerald" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-800 font-medium text-xs m-0">
-                                {roles.find(r => r.code === rCode)?.name || rCode}
-                              </Tag>
-                            ))
-                          ) : (
-                            <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium text-xs max-w-full truncate m-0">
-                              {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
-                            </Tag>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <Clock size={13} className="text-slate-300 flex-shrink-0" />
-                          <Text className="text-xs font-medium truncate">
-                            {step.deadline ? dayjs(step.deadline).format('DD/MM/YYYY') : 'Chưa thiết lập'}
-                          </Text>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        {(() => {
-                          const status = (step.status || '').toUpperCase();
-                          if (status === 'COMPLETED') {
-                            return (
-                              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-bold text-[11px]">
-                                <CheckCircle2 size={12} className="flex-shrink-0" />
-                                <span className="truncate">Hoàn thành</span>
-                              </div>
-                            );
-                          }
-                          if (status === 'ACTIVE') {
-                            return (
-                              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-bold text-[11px]">
-                                <Clock size={12} className="flex-shrink-0" />
-                                <span className="truncate">Đang thực hiện</span>
-                              </div>
-                            );
-                          }
+                          ))
+                        ) : (
+                          <Tag color="blue" className="rounded-full border-blue-100 bg-blue-50 text-blue-600 font-medium text-xs max-w-full truncate m-0">
+                            {roles.find(r => r.code === step.configuration?.performerRole)?.name || '---'}
+                          </Tag>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Clock size={13} className="text-slate-300 flex-shrink-0" />
+                        <Text className="text-xs font-medium truncate">
+                          {step.deadline ? dayjs(step.deadline).format('DD/MM/YYYY') : 'Chưa thiết lập'}
+                        </Text>
+                      </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      {(() => {
+                        const resolvedCode = resolveStepStatus(step, workflowSteps);
+                        const meta = getStepCustomBadge(step, workflowSteps);
+                        const StatusIcon = meta.icon;
+                        const lockReason = resolvedCode === 'LOCKED' ? getStepLockReason(step, workflowSteps) : null;
+
+                        const badgeNode = (
+                          <div className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] border ${meta.badgeBg} ${meta.badgeText} ${meta.badgeBorder} ${lockReason ? 'cursor-help' : ''}`}>
+                            <StatusIcon size={12} className="flex-shrink-0" />
+                            <span className="truncate">{meta.label}</span>
+                          </div>
+                        );
+
+                        if (lockReason) {
                           return (
-                            <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium text-[11px]">
-                              <AlertCircle size={12} className="flex-shrink-0" />
-                              <span className="truncate">Chờ khởi tạo</span>
-                            </div>
+                            <Tooltip title={lockReason} placement="topLeft">
+                              {badgeNode}
+                            </Tooltip>
                           );
-                        })()}
-                      </td>
-                      <td className="px-3 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end">
-                          <Tooltip title="Xem chi tiết bước">
-                            <Button
-                              type="text"
-                              icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
-                              className="flex items-center justify-center hover:bg-blue-50 rounded-full w-8 h-8"
-                              onClick={() => {
-                                router.push(`/survey/campaigns/${id}/steps/${step.id || idx}`);
-                              }}
-                            />
-                          </Tooltip>
-                        </div>
-                      </td>
-                    </tr>
+                        }
 
-                    {step.configuration?.screenCode === 'S5_CLO' && !isS5Expanded && (
-                      <tr key={`sub-s5-bar-${step.id || idx}`} className="bg-blue-50/20">
-                        <td colSpan={7} className="px-4 py-2 border-t border-b border-blue-100/70 border-l-4 border-l-blue-500">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-blue-900">
-                              <BookOpen size={14} className="text-blue-600" />
-                              <span>Danh sách Môn học thuộc CTĐT ({programCourses.length} môn)</span>
-                            </div>
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<ChevronDown size={14} />}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsS5Expanded(true);
-                              }}
-                              className="flex items-center justify-center rounded-lg bg-white hover:bg-blue-50 text-blue-600 h-7 px-3 font-semibold text-xs gap-1.5 border border-blue-200 shadow-2xs transition-all"
-                            >
-                              <span>Mở rộng xem danh sách môn học</span>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-
-                    {step.configuration?.screenCode === 'S5_CLO' && isS5Expanded && (
-                      <tr key={`sub-s5-${step.id || idx}`}>
-                        <td colSpan={7} className="p-0 border-b border-slate-200">
-                          <div className="bg-slate-50/70 border-l-2 border-l-blue-500 p-3.5 space-y-3 border-t border-slate-200/60">
-                            <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-200/60 flex-wrap">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 rounded-lg bg-blue-100/80 flex items-center justify-center text-blue-600 font-bold">
-                                  <BookOpen size={15} />
-                                </div>
-                                <div>
-                                  <div className="font-bold text-slate-700 text-xs flex items-center gap-2">
-                                    <span>Danh sách Môn học thuộc CTĐT</span>
-                                    <Tag color="blue" className="rounded-full font-bold text-[10px] px-2 py-0 border-none">
-                                      {programCourses.length} môn học
-                                    </Tag>
-                                  </div>
-                                  <div className="text-[11px] text-slate-400 font-medium">Thiết kế đề cương chi tiết và Chuẩn đầu ra (CLO) cho từng môn học</div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <Select
-                                  value={courseStatusFilter}
-                                  onChange={setCourseStatusFilter}
-                                  size="small"
-                                  className="w-40 text-xs font-medium"
-                                  options={[
-                                    { value: 'ALL', label: 'Tất cả trạng thái' },
-                                    { value: 'SET', label: 'Đã thiết lập CLO' },
-                                    { value: 'UNSET', label: 'Chưa thiết lập CLO' },
-                                  ]}
-                                />
-                                <Input.Search
-                                  placeholder="Tìm môn học..."
-                                  allowClear
-                                  size="small"
-                                  value={courseSearchText}
-                                  onChange={(e) => setCourseSearchText(e.target.value)}
-                                  className="w-56 text-xs"
-                                />
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  icon={<ChevronUp size={14} />}
-                                  onClick={() => setIsS5Expanded(false)}
-                                  className="flex items-center justify-center rounded-md bg-white hover:bg-slate-100 text-slate-600 h-7 px-2.5 font-medium text-[11px] gap-1 border border-slate-200 transition-all ml-1"
-                                >
-                                  <span>Thu gọn</span>
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="max-h-[340px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
-                              {filteredCourses.length > 0 ? filteredCourses.map((course: any) => {
-                                const courseCloData = stepResult?.[course.id]?.clos || stepResult?.[course.id] || [];
-                                const hasClo = Array.isArray(courseCloData) && courseCloData.length > 0;
-
-                                return (
-                                  <div 
-                                    key={course.id} 
-                                    className="py-2 px-3 bg-white rounded-md border border-slate-200/70 flex items-center justify-between hover:border-blue-400 hover:shadow-xs transition-all group/item"
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-md bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-[11px] font-mono">
-                                        {course.code || 'MH'}
-                                      </div>
-                                      <div>
-                                        <div className="font-semibold text-slate-800 text-xs group-hover/item:text-blue-600 transition-colors">{course.name}</div>
-                                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-2">
-                                          <span>Mã môn: <span className="font-mono text-slate-600 font-semibold">{course.code}</span></span>
-                                          <span>•</span>
-                                          <span>Số tín chỉ: <span className="text-slate-600 font-semibold">{course.credits || 3}</span></span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                      {hasClo ? (
-                                        <Tag color="success" className="rounded-full px-2.5 py-0.5 border-none font-bold text-[10px] uppercase tracking-wider">
-                                          {courseCloData.length} CLO đã thiết lập
-                                        </Tag>
-                                      ) : (
-                                        <Tag color="default" className="rounded-full px-2.5 py-0.5 border-none font-medium text-[10px] text-slate-400 bg-slate-100">
-                                          Chưa thiết lập CLO
-                                        </Tag>
-                                      )}
-
-                                      <Tooltip title="Thiết kế đề cương / CLO">
-                                        <Button
-                                          type="text"
-                                          size="small"
-                                          icon={<ChevronRight size={15} className="text-slate-400 group-hover/item:text-blue-500 transition-colors" />}
-                                          className="flex items-center justify-center hover:bg-blue-50 rounded-md w-7 h-7"
-                                          onClick={() => router.push(`/survey/campaigns/${id}/steps/${step.id || idx}?courseId=${course.id}&mode=edit`)}
-                                        />
-                                      </Tooltip>
-                                    </div>
-                                  </div>
-                                );
-                              }) : (
-                                <div className="text-center py-8 bg-white rounded-md border border-dashed border-slate-200 text-slate-400 text-xs font-medium">
-                                  {courseSearchText || courseStatusFilter !== 'ALL' ? 'Không tìm thấy môn học phù hợp với bộ lọc.' : 'Chương trình đào tạo này chưa có môn học nào được gán.'}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                        return badgeNode;
+                      })()}
+                    </td>
+                    <td className="px-3 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end">
+                        <Tooltip title="Xem chi tiết bước">
+                          <Button
+                            type="text"
+                            icon={<ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500 transition-colors" />}
+                            className="flex items-center justify-center hover:bg-blue-50 rounded-full w-8 h-8"
+                            onClick={() => {
+                              router.push(`/curriculum/development/${id}/steps/${step.id || idx}`);
+                            }}
+                          />
+                        </Tooltip>
+                      </div>
+                    </td>
+                  </tr>
                 );
               }) : (
                 <tr>
@@ -695,15 +527,17 @@ export default function SurveyCampaignForm() {
     const status = (isView ? campaignData?.status : form.getFieldValue('status')) || 'DRAFT';
     const statusMap: any = {
       'DRAFT': { color: 'default', text: 'Bản nháp' },
-      'ACTIVE': { color: 'processing', text: 'Đang diễn ra' },
+      'IN_PROGRESS': { color: 'processing', text: 'Đang thực hiện' },
+      'ACTIVE': { color: 'processing', text: 'Đang thực hiện' },
       'COMPLETED': { color: 'success', text: 'Đã kết thúc' },
-      'APPROVED': { color: 'gold', text: 'Đã phê duyệt (Synced)' },
+      'APPROVED': { color: 'gold', text: 'Đã hoàn thành' },
       'CANCELLED': { color: 'error', text: 'Đã hủy' }
     };
     const config = statusMap[status] || statusMap['DRAFT'];
 
-    const completedStepsCount = workflowSteps.filter(s => s.status === 'COMPLETED').length;
+    const completedStepsCount = workflowSteps.filter(s => (s.status || '').toUpperCase() === 'COMPLETED').length;
     const progressPercent = workflowSteps.length > 0 ? Math.round((completedStepsCount / workflowSteps.length) * 100) : 0;
+    const allStepsCompleted = workflowSteps.length > 0 && completedStepsCount === workflowSteps.length;
 
     const totalCourses = programCourses.length;
     const s5Step = workflowSteps.find(s => s.configuration?.screenCode === 'S5_CLO');
@@ -719,8 +553,9 @@ export default function SurveyCampaignForm() {
         <Breadcrumb 
           className="text-slate-400 text-xs"
           items={[
-            { title: <a onClick={() => router.push('/training/programs')} className="hover:text-blue-600">Đào tạo</a> },
-            { title: <a onClick={() => router.push('/training/builder')} className="hover:text-blue-600">Xây dựng CTĐT</a> },
+            { title: <a onClick={() => router.push('/')} className="hover:text-blue-600">Trang chủ</a> },
+            { title: <a onClick={() => router.push('/curriculum/programs')} className="hover:text-blue-600">Đào tạo</a> },
+            { title: <a onClick={() => router.push('/curriculum/development')} className="hover:text-blue-600">Xây dựng & Rà soát CTĐT</a> },
             { title: campaignData?.name || (isNew ? 'Tạo mới đợt xây dựng' : 'Chi tiết đợt xây dựng') }
           ]}
         />
@@ -774,7 +609,7 @@ export default function SurveyCampaignForm() {
                         try {
                           await surveyCampaignService.cancel(id as string);
                           message.success('Đã hủy đợt khảo sát thành công');
-                          router.push('/survey/campaigns');
+                          router.push('/curriculum/development');
                         } catch (error: any) {
                           message.error(error.message || 'Lỗi khi hủy đợt khảo sát');
                         }
@@ -803,16 +638,16 @@ export default function SurveyCampaignForm() {
                   Chỉnh sửa
                 </Button>
               )}
-              {campaignData?.status !== 'APPROVED' && (
+              {campaignData?.status !== 'APPROVED' && allStepsCompleted && (
                 <Button
                   type="primary"
                   size="middle"
                   icon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 size={16} />}
                   onClick={handleApprove}
                   disabled={isSubmitting}
-                  className="rounded-xl px-6 h-10 font-bold text-sm bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-100 border-none transition-all"
+                  className="rounded-xl px-6 h-10 font-bold text-sm bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-100 border-none transition-all"
                 >
-                  Phê duyệt & Đồng bộ
+                  Hoàn tất quy trình
                 </Button>
               )}
             </Space>
@@ -907,7 +742,7 @@ export default function SurveyCampaignForm() {
         layout="vertical"
         onFinish={onFinish}
         initialValues={{
-          status: 'ACTIVE'
+          status: 'IN_PROGRESS'
         }}
       >
         {!isView ? (

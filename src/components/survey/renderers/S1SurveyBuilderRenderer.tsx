@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import {
   Typography,
   Button,
@@ -43,6 +43,10 @@ import {
   AlignLeft,
   HelpCircle,
   FileText,
+  History,
+  Send,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import {
   surveyFormService,
@@ -53,6 +57,8 @@ import {
   SurveySubmissionItem,
   SurveySummary,
   SurveyQuestionType,
+  SurveyFormVersionItem,
+  SurveyFormStatus,
 } from '@/services/surveyFormService';
 
 const { Text, Title } = Typography;
@@ -91,28 +97,48 @@ const QUESTION_TYPE_OPTIONS = Object.entries(QUESTION_TYPE_CONFIG).map(
   })
 );
 
-interface S1SurveyBuilderRendererProps {
+export interface S1SurveyBuilderRef {
+  saveForm: () => Promise<boolean>;
+  submitReview: () => Promise<boolean>;
+  recallSubmission: () => Promise<boolean>;
+  approveDesign: () => Promise<boolean>;
+  rejectDesign: () => void;
+  publishForm: () => Promise<boolean>;
+  requestRevision: () => void;
+}
+
+export interface S1SurveyBuilderRendererProps {
   step: any;
   readonly: boolean;
   data?: any;
   onChange?: (data: any) => void;
   onRefreshStep?: () => void;
+  onFormLoaded?: (form: SurveyForm | null, versions: SurveyFormVersionItem[]) => void;
 }
 
-export default function S1SurveyBuilderRenderer({
-  step,
-  readonly,
-  data,
-  onChange,
-  onRefreshStep,
-}: S1SurveyBuilderRendererProps) {
+const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRendererProps>(
+  function S1SurveyBuilderRenderer(
+    {
+      step,
+      readonly,
+      data,
+      onChange,
+      onRefreshStep,
+      onFormLoaded,
+    }: S1SurveyBuilderRendererProps,
+    ref
+  ) {
   const stepId = step?.id;
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'builder' | 'summary' | 'submissions'>('builder');
   const [formConfig, setFormConfig] = useState<SurveyForm | null>(null);
+  const [versions, setVersions] = useState<SurveyFormVersionItem[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [canApproveRole, setCanApproveRole] = useState(false);
 
   // Analytics data
   const [summary, setSummary] = useState<SurveySummary | null>(null);
@@ -122,6 +148,26 @@ export default function S1SurveyBuilderRenderer({
   // Modals
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [previewSubmission, setPreviewSubmission] = useState<SurveySubmissionItem | null>(null);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // Check logged in user roles
+  useEffect(() => {
+    try {
+      const userStr = localStorage.getItem('euni_user');
+      if (userStr) {
+        const parsed = JSON.parse(userStr);
+        const r = (parsed.roles || [])
+          .map((x: any) => (typeof x === 'string' ? x : x?.code || x?.name || ''))
+          .map((x: string) => x.replace(/^ROLE_/, '').toUpperCase());
+        const isAdm = r.includes('ADMIN');
+        const isDean = r.includes('DEAN') || r.includes('HEAD_DEPT');
+        setCanApproveRole(isAdm || isDean);
+      }
+    } catch (e) {
+      console.error('Failed to parse user role', e);
+    }
+  }, []);
 
   // Utility to clean raw HTML tags from seeded descriptions
   const cleanHtml = (text?: string) => {
@@ -129,12 +175,27 @@ export default function S1SurveyBuilderRenderer({
     return text.replace(/<[^>]*>/g, '').trim();
   };
 
-  // Load Form Data
-  const loadFormData = async () => {
+  const loadVersions = async () => {
+    if (!stepId) return;
+    try {
+      const vList = await surveyFormService.getFormVersions(stepId);
+      setVersions(vList);
+    } catch (e) {
+      console.error('Failed to load form versions', e);
+    }
+  };
+
+  // Load Form Data (Optionally by targetFormId for version history)
+  const loadFormData = async (targetFormId?: number) => {
     if (!stepId) return;
     try {
       setLoading(true);
-      const res = await surveyFormService.getFormByStep(stepId);
+      let res: SurveyForm;
+      if (targetFormId) {
+        res = await surveyFormService.getFormById(targetFormId);
+      } else {
+        res = await surveyFormService.getFormByStep(stepId);
+      }
       const normalizedForm: SurveyForm = {
         ...res,
         description: cleanHtml(res?.description),
@@ -145,8 +206,14 @@ export default function S1SurveyBuilderRenderer({
         directQuestions: res?.directQuestions || [],
       };
       setFormConfig(normalizedForm);
+      setSelectedVersionId(normalizedForm.id);
       if (onChange) {
         onChange(normalizedForm);
+      }
+      const vList = await surveyFormService.getFormVersions(stepId);
+      setVersions(vList);
+      if (onFormLoaded) {
+        onFormLoaded(normalizedForm, vList);
       }
     } catch (err) {
       console.error('Failed to load survey form for step', err);
@@ -156,13 +223,14 @@ export default function S1SurveyBuilderRenderer({
     }
   };
 
-  const loadAnalytics = async () => {
-    if (!stepId) return;
+  const loadAnalytics = async (targetFormId?: number) => {
+    const fId = targetFormId || formConfig?.id;
+    if (!fId) return;
     try {
       setLoadingAnalytics(true);
       const [sumRes, subRes] = await Promise.all([
-        surveyFormService.getSummary(stepId),
-        surveyFormService.getSubmissions(stepId),
+        surveyFormService.getSummaryByFormId(fId),
+        surveyFormService.getSubmissionsByFormId(fId),
       ]);
       setSummary(sumRes);
       setSubmissions(subRes);
@@ -179,13 +247,21 @@ export default function S1SurveyBuilderRenderer({
 
   useEffect(() => {
     if (activeTab === 'summary' || activeTab === 'submissions') {
-      loadAnalytics();
+      loadAnalytics(selectedVersionId || formConfig?.id);
     }
-  }, [activeTab, stepId]);
+  }, [activeTab, selectedVersionId, formConfig?.id]);
+
+  const handleVersionChange = async (verId: number) => {
+    setSelectedVersionId(verId);
+    await loadFormData(verId);
+    if (activeTab === 'summary' || activeTab === 'submissions') {
+      await loadAnalytics(verId);
+    }
+  };
 
   // Form Mutations
-  const handleSaveForm = async () => {
-    if (!formConfig || !stepId) return;
+  const handleSaveForm = async (): Promise<boolean> => {
+    if (!formConfig || !stepId) return false;
     try {
       setIsSaving(true);
       const res = await surveyFormService.saveForm(stepId, {
@@ -204,19 +280,113 @@ export default function S1SurveyBuilderRenderer({
         directQuestions: res?.directQuestions || [],
       };
       setFormConfig(normalized);
-      message.success('Đã lưu bản nháp thiết kế biểu mẫu');
+      setSelectedVersionId(normalized.id);
+
+      if (formConfig.id && normalized.version > (formConfig.version || 1)) {
+        message.success(
+          `Do phiên bản cũ đã có phản hồi, hệ thống đã tạo mới Phiên bản v${normalized.version} để bảo toàn số liệu cũ!`
+        );
+      } else if (!formConfig.id) {
+        message.success('Đã lưu thiết kế biểu mẫu (Khởi tạo Phiên bản v1 thành công)');
+      } else {
+        message.success('Đã lưu bản nháp thiết kế biểu mẫu');
+      }
+
+      const vList = await surveyFormService.getFormVersions(stepId);
+      setVersions(vList);
+      if (onFormLoaded) {
+        onFormLoaded(normalized, vList);
+      }
       if (onChange) {
         onChange(normalized);
       }
+      if (onRefreshStep) {
+        onRefreshStep();
+      }
+      return true;
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'Lỗi khi lưu biểu mẫu khảo sát.');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handlePublish = async () => {
+  // Yêu cầu 2: Maker nộp duyệt thiết kế
+  const handleSubmitReview = async (): Promise<boolean> => {
+    if (!stepId) return false;
+    try {
+      setIsSaving(true);
+      await surveyFormService.submitReview(stepId);
+      message.success('Đã nộp thiết kế biểu mẫu để cấp có thẩm quyền phê duyệt!');
+      await loadFormData();
+      if (onRefreshStep) onRefreshStep();
+      return true;
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'Lỗi khi nộp duyệt');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Maker chủ động thu hồi yêu cầu phê duyệt để chỉnh sửa lại
+  const handleRecallSubmission = async (): Promise<boolean> => {
+    if (!stepId) return false;
+    try {
+      setIsSaving(true);
+      await surveyFormService.recallSubmission(stepId);
+      message.success('Đã thu hồi yêu cầu phê duyệt! Biểu mẫu trở về bản nháp để bạn chỉnh sửa.');
+      await loadFormData();
+      if (onRefreshStep) onRefreshStep();
+      return true;
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'Lỗi khi thu hồi yêu cầu');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Yêu cầu 2: Approver duyệt thiết kế
+  const handleApproveDesign = async (): Promise<boolean> => {
+    if (!stepId) return false;
+    try {
+      setIsSaving(true);
+      await surveyFormService.approveDesign(stepId);
+      message.success('Đã phê duyệt thiết kế biểu mẫu! Giờ đây bạn có thể Xuất bản & Lấy link khảo sát.');
+      await loadFormData();
+      if (onRefreshStep) onRefreshStep();
+      return true;
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'Lỗi khi duyệt thiết kế');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Yêu cầu 2: Approver từ chối thiết kế
+  const handleConfirmReject = async () => {
     if (!stepId) return;
+    try {
+      setIsSaving(true);
+      await surveyFormService.rejectDesign(stepId, rejectReason);
+      message.success('Đã gửi yêu cầu chỉnh sửa thiết kế biểu mẫu thành công!');
+      setRejectModalOpen(false);
+      setRejectReason('');
+      await loadFormData();
+      if (onRefreshStep) onRefreshStep();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'Lỗi khi từ chối thiết kế');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Yêu cầu 2: Xuất bản và tạo link (Chỉ khi đã APPROVED)
+  const handlePublish = async (): Promise<boolean> => {
+    if (!stepId) return false;
     try {
       setIsPublishing(true);
       const res = await surveyFormService.publishForm(stepId);
@@ -226,15 +396,57 @@ export default function S1SurveyBuilderRenderer({
         directQuestions: res?.directQuestions || [],
       };
       setFormConfig(normalized);
-      message.success('Đã xuất bản biểu mẫu! Link khảo sát công khai đã sẵn sàng.');
+      message.success('Đã xuất bản biểu mẫu! Link khảo sát công khai và QR code đã sẵn sàng.');
+      await loadVersions();
       if (onRefreshStep) {
         onRefreshStep();
       }
+      return true;
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'Lỗi khi xuất bản biểu mẫu.');
+      return false;
     } finally {
       setIsPublishing(false);
     }
+  };
+
+  // Yêu cầu 3: Đang khảo sát -> Cho phép sửa form, khóa link cũ, tạo version mới
+  const handleRequestRevision = () => {
+    Modal.confirm({
+      title: 'Cho phép chỉnh sửa biểu mẫu (Tạo phiên bản mới)',
+      content: (
+        <div className="py-2 text-xs space-y-2">
+          <p className="text-slate-700 font-medium">Hệ thống sẽ thực hiện các thao tác sau:</p>
+          <ul className="list-disc pl-4 space-y-1 text-slate-600">
+            <li>
+              <strong>Khóa link khảo sát hiện tại</strong> (ngừng tiếp nhận câu trả lời cho phiên bản này để bảo vệ dữ liệu đã có).
+            </li>
+            <li>
+              Tự động tạo <strong>Phiên bản mới (v{(formConfig?.version || 1) + 1})</strong> từ bản sao biểu mẫu này.
+            </li>
+            <li>
+              Đưa biểu mẫu về trạng thái <strong>Bản nháp</strong> để chỉnh sửa và yêu cầu nộp duyệt lại từ đầu theo quy định.
+            </li>
+          </ul>
+        </div>
+      ),
+      okText: 'Xác nhận tạo phiên bản mới',
+      cancelText: 'Hủy bỏ',
+      centered: true,
+      onOk: async () => {
+        try {
+          setIsSaving(true);
+          await surveyFormService.requestRevision(stepId);
+          message.success('Đã khóa link cũ và khởi tạo phiên bản mới thành công!');
+          await loadFormData();
+          if (onRefreshStep) onRefreshStep();
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || err?.message || 'Lỗi khi yêu cầu sửa đổi');
+        } finally {
+          setIsSaving(false);
+        }
+      },
+    });
   };
 
   const handleCloseSurvey = async () => {
@@ -248,6 +460,7 @@ export default function S1SurveyBuilderRenderer({
       };
       setFormConfig(normalized);
       message.info('Đã kết thúc đợt khảo sát.');
+      await loadVersions();
       if (onRefreshStep) {
         onRefreshStep();
       }
@@ -255,6 +468,16 @@ export default function S1SurveyBuilderRenderer({
       message.error(err?.response?.data?.message || err?.message || 'Lỗi khi đóng khảo sát.');
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    saveForm: handleSaveForm,
+    submitReview: handleSubmitReview,
+    recallSubmission: handleRecallSubmission,
+    approveDesign: handleApproveDesign,
+    rejectDesign: () => setRejectModalOpen(true),
+    publishForm: handlePublish,
+    requestRevision: handleRequestRevision,
+  }));
 
   const getFullPublicUrl = () => {
     if (typeof window === 'undefined' || !formConfig?.publicSlug) return '';
@@ -348,135 +571,161 @@ export default function S1SurveyBuilderRenderer({
     return <Empty description="Chưa có dữ liệu khảo sát cho bước này" />;
   }
 
-  const isFormLocked = readonly || formConfig.status === 'CLOSED';
+  const isFormLocked =
+    readonly ||
+    formConfig.status === 'CLOSED' ||
+    formConfig.status === 'PUBLISHED' ||
+    formConfig.status === 'PENDING_REVIEW';
   const isPublished = formConfig.status === 'PUBLISHED' && !!formConfig.publicSlug;
 
   return (
     <div className="space-y-5">
-      {/* 1. COMPACT UNIFIED CONTROL STRIP (Eliminates redundant banner card) */}
+      {/* 1. VERSION HISTORY TOOLBAR (Yêu cầu 1: Xem lịch sử và form cũ) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/90 px-4 py-2.5 rounded-xl">
+        <div className="flex items-center gap-2 flex-wrap">
+          <History className="w-4 h-4 text-blue-600 shrink-0" />
+          <span className="text-xs font-bold text-slate-700">Phiên bản biểu mẫu:</span>
+          <Select<number>
+            value={versions.length === 0 ? undefined : selectedVersionId || formConfig.id}
+            placeholder="Chưa có phiên bản (Bản nháp ban đầu)"
+            onChange={handleVersionChange}
+            className="min-w-[280px]"
+            size="small"
+            disabled={versions.length === 0}
+            options={versions.map((v) => ({
+              value: v.id,
+                    label: (
+                      <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+                        <span className="font-semibold text-slate-800">
+                          Phiên bản v{v.version} {v.isCurrent ? '★ (Hiện tại)' : '(Lịch sử)'}
+                        </span>
+                        <Tag
+                          color={
+                            v.status === 'PUBLISHED'
+                              ? 'blue'
+                              : v.status === 'CLOSED'
+                              ? 'default'
+                              : v.status === 'APPROVED'
+                              ? 'green'
+                              : v.status === 'PENDING_REVIEW'
+                              ? 'orange'
+                              : 'gold'
+                          }
+                          className="m-0 text-[10px] px-1.5 py-0 leading-normal"
+                        >
+                          {v.status === 'PUBLISHED'
+                            ? 'Đang mở'
+                            : v.status === 'CLOSED'
+                            ? 'Đã đóng'
+                            : v.status === 'APPROVED'
+                            ? 'Đã duyệt'
+                            : v.status === 'PENDING_REVIEW'
+                            ? 'Chờ duyệt'
+                            : 'Bản nháp'}{' '}
+                          • {v.totalSubmissions} phản hồi
+                        </Tag>
+                      </div>
+                    ),
+                  }))
+            }
+          />
+        </div>
+
+        <span className="text-xs text-slate-500">
+          {formConfig.version ? (
+            <>Số phản hồi phiên bản này: <strong className="text-slate-800">{formConfig.totalSubmissions || 0}</strong></>
+          ) : (
+            <span className="text-slate-400 italic">Chưa lưu vào hệ thống</span>
+          )}
+        </span>
+      </div>
+
+      {/* 2. UNIFIED STATUS & CONTROL STRIP */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
         <div className="flex items-center gap-2.5 flex-wrap">
+          {(!formConfig.id || !formConfig.status) && (
+            <Tag className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0 bg-slate-100 text-slate-600 border-slate-300">
+              ● Chưa bắt đầu thiết kế (PENDING)
+            </Tag>
+          )}
           {formConfig.status === 'PUBLISHED' && (
+            <Tag color="processing" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
+              ● Đang mở khảo sát (v{formConfig.version})
+            </Tag>
+          )}
+          {formConfig.status === 'APPROVED' && (
             <Tag color="success" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
-              ● Đang mở tiếp nhận
+              ● Thiết kế đã duyệt (v{formConfig.version}) - Sẵn sàng tạo link
+            </Tag>
+          )}
+          {formConfig.status === 'PENDING_REVIEW' && (
+            <Tag color="warning" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
+              ● Đang chờ phê duyệt thiết kế (v{formConfig.version})
             </Tag>
           )}
           {formConfig.status === 'DRAFT' && (
-            <Tag color="warning" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
-              ● Bản nháp thiết kế
+            <Tag color="default" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
+              ● Bản nháp thiết kế (v{formConfig.version})
             </Tag>
           )}
           {formConfig.status === 'CLOSED' && (
             <Tag color="default" className="px-2.5 py-0.5 rounded-full font-semibold text-xs m-0">
-              ● Đã kết thúc
+              ● Đã đóng link khảo sát (v{formConfig.version})
             </Tag>
           )}
 
           <span className="text-xs text-slate-400">|</span>
           <span className="text-xs text-slate-500 font-medium">
-            Đã thu thập: <strong className="text-slate-800">{formConfig.totalSubmissions || 0}</strong> phản hồi
+            Mục tiêu: <strong className="text-slate-800">{formConfig.targetAudience || 'Chưa đặt'}</strong>
           </span>
         </div>
-
-        {/* Action Buttons: Khi xuất bản rồi thì chỉ còn nút Đóng khảo sát */}
-        {!readonly && (
-          <Space size="small">
-            {formConfig.status === 'DRAFT' && (
-              <>
-                <Button
-                  icon={<Save className="w-3.5 h-3.5" />}
-                  onClick={handleSaveForm}
-                  loading={isSaving}
-                  disabled={isFormLocked}
-                  className="rounded-lg text-xs font-medium"
-                >
-                  Lưu bản nháp
-                </Button>
-
-                <Button
-                  type="primary"
-                  icon={<Globe className="w-3.5 h-3.5" />}
-                  onClick={handlePublish}
-                  loading={isPublishing}
-                  className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-semibold shadow-xs"
-                >
-                  Xuất bản & Lấy link
-                </Button>
-              </>
-            )}
-
-            {formConfig.status === 'PUBLISHED' && (
-              <Button
-                danger
-                icon={<Lock className="w-3.5 h-3.5" />}
-                onClick={handleCloseSurvey}
-                className="rounded-lg text-xs font-medium"
-              >
-                Đóng khảo sát
-              </Button>
-            )}
-          </Space>
-        )}
       </div>
 
-      {/* 2. PUBLIC LINK BAR: Only appears when PUBLISHED (Rule: Draft mode has NO link) */}
-      {isPublished ? (
+      {/* 3. PUBLIC LINK BAR (Khi đã xuất bản) */}
+      {isPublished && (
         <div className="flex flex-wrap items-center justify-between gap-3 bg-blue-50/80 border border-blue-200/90 px-4 py-2.5 rounded-xl">
           <div className="flex items-center gap-2.5 min-w-0">
             <Share2 className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="text-xs font-medium text-slate-600 shrink-0">Link khảo sát:</span>
+            <span className="text-xs font-medium text-slate-600 shrink-0">Link khảo sát công khai (v{formConfig.version}):</span>
             <Text code className="text-xs text-blue-700 select-all truncate font-mono">
               {getFullPublicUrl()}
             </Text>
           </div>
 
           <Space size="small">
-            <Tooltip title="Sao chép đường dẫn gửi cho doanh nghiệp / cựu sinh viên">
-              <Button
-                size="small"
-                icon={<Copy className="w-3.5 h-3.5" />}
-                onClick={handleCopyLink}
-                className="rounded-lg text-xs font-medium bg-white"
-              >
-                Sao chép Link
-              </Button>
-            </Tooltip>
+            <Button
+              size="small"
+              icon={<Copy className="w-3.5 h-3.5" />}
+              onClick={handleCopyLink}
+              className="rounded-lg text-xs font-medium bg-white"
+            >
+              Sao chép Link
+            </Button>
 
-            <Tooltip title="Mã QR tiện chia sẻ trên điện thoại">
-              <Button
-                size="small"
-                icon={<QrCode className="w-3.5 h-3.5" />}
-                onClick={() => setQrModalOpen(true)}
-                className="rounded-lg text-xs font-medium bg-white"
-              >
-                QR Code
-              </Button>
-            </Tooltip>
+            <Button
+              size="small"
+              icon={<QrCode className="w-3.5 h-3.5" />}
+              onClick={() => setQrModalOpen(true)}
+              className="rounded-lg text-xs font-medium bg-white"
+            >
+              QR Code
+            </Button>
 
-            <Tooltip title="Mở trang điền thử nghiệm">
-              <Button
-                size="small"
-                type="link"
-                icon={<ExternalLink className="w-3.5 h-3.5" />}
-                href={`/public/survey/${formConfig.publicSlug}`}
-                target="_blank"
-                className="text-xs text-blue-700 font-semibold p-0"
-              >
-                Mở trang
-              </Button>
-            </Tooltip>
+            <Button
+              size="small"
+              type="link"
+              icon={<ExternalLink className="w-3.5 h-3.5" />}
+              href={`/public/survey/${formConfig.publicSlug}`}
+              target="_blank"
+              className="text-xs text-blue-700 font-semibold p-0"
+            >
+              Mở trang
+            </Button>
           </Space>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2.5 bg-amber-50/70 border border-amber-200/70 px-4 py-2.5 rounded-xl text-xs text-amber-800">
-          <Info className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>
-            Biểu mẫu đang ở <strong>Bản nháp</strong>. Link công khai sẽ được tạo tự động và mở quyền tiếp nhận khi bạn nhấn <strong>"Xuất bản & Lấy link"</strong>.
-          </span>
         </div>
       )}
 
-      {/* 3. MAIN TABS (Builder / Summary / Submissions) */}
+      {/* 4. MAIN TABS (Builder / Summary / Submissions) */}
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as any)}
@@ -487,12 +736,12 @@ export default function S1SurveyBuilderRenderer({
             label: (
               <span className="flex items-center gap-2 px-1 py-0.5 text-xs font-semibold text-slate-700">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
-                Thiết kế biểu mẫu
+                Thiết kế biểu mẫu {formConfig.version ? `(v${formConfig.version})` : ''}
               </span>
             ),
             children: (
               <div className="space-y-5 pt-1">
-                {/* 3.1 SURVEY META HEADER (With clear descriptive labels) */}
+                {/* Meta Header */}
                 <div className="bg-white border-t-4 border-blue-600 rounded-b-xl border-x border-b border-slate-200/90 p-5 shadow-xs space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
@@ -553,7 +802,7 @@ export default function S1SurveyBuilderRenderer({
                   </div>
                 </div>
 
-                {/* 3.2 SECTIONS & QUESTIONS LIST */}
+                {/* Sections & Questions */}
                 <div className="space-y-4">
                   {formConfig.sections?.map((section, sIdx) => (
                     <div
@@ -648,20 +897,19 @@ export default function S1SurveyBuilderRenderer({
                                       const updated = [...formConfig.sections];
                                       const targetQ = updated[sIdx].questions![qIdx];
                                       targetQ.questionType = val;
-                                      if (
-                                        (val === 'SINGLE_CHOICE' || val === 'MULTIPLE_CHOICE') &&
-                                        (!targetQ.options || targetQ.options.length === 0)
-                                      ) {
-                                        targetQ.options = [
-                                          { content: 'Tùy chọn 1', orderIndex: 1 },
-                                          { content: 'Tùy chọn 2', orderIndex: 2 },
-                                        ];
+                                      if (val === 'SINGLE_CHOICE' || val === 'MULTIPLE_CHOICE') {
+                                        if (!targetQ.options || targetQ.options.length === 0) {
+                                          targetQ.options = [
+                                            { content: 'Lựa chọn 1', orderIndex: 1 },
+                                            { content: 'Lựa chọn 2', orderIndex: 2 },
+                                          ];
+                                        }
                                       }
                                       setFormConfig({ ...formConfig, sections: updated });
                                     }}
-                                    className="w-48 font-medium text-xs"
-                                    size="middle"
                                     options={QUESTION_TYPE_OPTIONS}
+                                    className="w-56 text-xs"
+                                    size="middle"
                                   />
                                 )}
 
@@ -672,46 +920,21 @@ export default function S1SurveyBuilderRenderer({
                                     size="small"
                                     icon={<Trash2 className="w-3.5 h-3.5" />}
                                     onClick={() => handleRemoveQuestion(sIdx, qIdx)}
-                                    className="text-slate-400 hover:text-red-500"
+                                    className="text-slate-400 hover:text-red-500 rounded-md"
                                   />
                                 )}
                               </div>
                             </div>
 
-                            {/* Question Type Preview */}
-                            {q.questionType === 'LIKERT_SCALE' && (
-                              <div className="grid grid-cols-5 gap-2 px-3 py-2 bg-slate-50/80 rounded-lg border border-slate-200/70 text-center text-xs">
-                                <div className="p-1.5 rounded bg-white border border-slate-200 text-slate-600 font-medium">
-                                  <span className="block font-bold text-slate-800">1</span>
-                                  <span className="text-[10px] text-slate-400">Rất không đồng ý</span>
-                                </div>
-                                <div className="p-1.5 rounded bg-white border border-slate-200 text-slate-600 font-medium">
-                                  <span className="block font-bold text-slate-800">2</span>
-                                  <span className="text-[10px] text-slate-400">Không đồng ý</span>
-                                </div>
-                                <div className="p-1.5 rounded bg-white border border-slate-200 text-slate-600 font-medium">
-                                  <span className="block font-bold text-slate-800">3</span>
-                                  <span className="text-[10px] text-slate-400">Phân vân</span>
-                                </div>
-                                <div className="p-1.5 rounded bg-white border border-slate-200 text-slate-600 font-medium">
-                                  <span className="block font-bold text-slate-800">4</span>
-                                  <span className="text-[10px] text-slate-400">Đồng ý</span>
-                                </div>
-                                <div className="p-1.5 rounded bg-white border border-slate-200 text-slate-600 font-medium">
-                                  <span className="block font-bold text-slate-800">5</span>
-                                  <span className="text-[10px] text-slate-400">Rất đồng ý</span>
-                                </div>
-                              </div>
-                            )}
-
+                            {/* Options Preview / Edit for Choice types */}
                             {(q.questionType === 'SINGLE_CHOICE' || q.questionType === 'MULTIPLE_CHOICE') && (
-                              <div className="space-y-1.5 pl-5 pt-0.5">
-                                {q.options?.map((opt, oIdx) => (
-                                  <div key={oIdx} className="flex items-center gap-2">
+                              <div className="pl-4 border-l-2 border-slate-200 space-y-2 pt-1">
+                                {q.options?.map((opt, optIdx) => (
+                                  <div key={optIdx} className="flex items-center gap-2">
                                     {q.questionType === 'SINGLE_CHOICE' ? (
-                                      <CircleDot className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <CircleDot className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                     ) : (
-                                      <CheckSquare className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <CheckSquare className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                     )}
                                     <Input
                                       size="small"
@@ -719,18 +942,20 @@ export default function S1SurveyBuilderRenderer({
                                       disabled={isFormLocked}
                                       onChange={(e) => {
                                         const updated = [...formConfig.sections];
-                                        updated[sIdx].questions![qIdx].options![oIdx].content = e.target.value;
+                                        updated[sIdx].questions![qIdx].options![optIdx].content = e.target.value;
                                         setFormConfig({ ...formConfig, sections: updated });
                                       }}
-                                      className="text-xs rounded-md"
+                                      className="text-xs rounded-md border-slate-200"
+                                      placeholder={`Tùy chọn ${optIdx + 1}...`}
                                     />
-                                    {!isFormLocked && (
+                                    {!isFormLocked && (q.options?.length || 0) > 1 && (
                                       <Button
                                         type="text"
-                                        size="small"
                                         danger
+                                        size="small"
                                         icon={<Trash2 className="w-3 h-3" />}
-                                        onClick={() => handleRemoveOption(sIdx, qIdx, oIdx)}
+                                        onClick={() => handleRemoveOption(sIdx, qIdx, optIdx)}
+                                        className="text-slate-300 hover:text-red-500 rounded-md p-1 h-auto"
                                       />
                                     )}
                                   </div>
@@ -738,57 +963,47 @@ export default function S1SurveyBuilderRenderer({
 
                                 {!isFormLocked && (
                                   <Button
-                                    size="small"
                                     type="dashed"
+                                    size="small"
                                     icon={<Plus className="w-3 h-3" />}
                                     onClick={() => handleAddOption(sIdx, qIdx)}
-                                    className="text-[11px] text-blue-600 rounded-md mt-1"
+                                    className="text-xs rounded-md text-blue-600 hover:text-blue-700 border-blue-200 mt-1"
                                   >
-                                    Thêm lựa chọn
+                                    Thêm tùy chọn
                                   </Button>
                                 )}
                               </div>
                             )}
 
-                            {q.questionType === 'SHORT_TEXT' && (
-                              <Input disabled placeholder="Văn bản câu trả lời ngắn..." className="bg-white text-xs" size="small" />
-                            )}
-
-                            {q.questionType === 'LONG_TEXT' && (
-                              <TextArea disabled rows={2} placeholder="Văn bản câu trả lời dài..." className="bg-white text-xs" />
-                            )}
-
-                            {/* Question Settings Row */}
-                            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400 border-t border-slate-100">
-                              <div className="flex items-center gap-1.5">
-                                <span>Bắt buộc</span>
-                                <Switch
-                                  size="small"
-                                  checked={q.required}
-                                  disabled={isFormLocked}
-                                  onChange={(v) => {
-                                    const updated = [...formConfig.sections];
-                                    updated[sIdx].questions![qIdx].required = v;
-                                    setFormConfig({ ...formConfig, sections: updated });
-                                  }}
-                                />
+                            {/* Likert Scale Display */}
+                            {q.questionType === 'LIKERT_SCALE' && (
+                              <div className="p-2.5 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center justify-between text-xs text-blue-800">
+                                <span>Thang đo chuẩn 5 mức độ: 1: Rất không đồng ý → 5: Rất đồng ý</span>
+                                <Tag color="blue" className="rounded-md m-0 text-[11px]">1 đến 5 sao</Tag>
                               </div>
-                            </div>
+                            )}
+
+                            {/* Short / Long text placeholder */}
+                            {(q.questionType === 'SHORT_TEXT' || q.questionType === 'LONG_TEXT') && (
+                              <div className="p-2 rounded-lg bg-slate-100/60 text-xs text-slate-400 italic">
+                                [Vùng nhập câu trả lời của người tham gia khảo sát]
+                              </div>
+                            )}
                           </div>
                         ))}
-                      </div>
 
-                      {!isFormLocked && (
-                        <Button
-                          type="dashed"
-                          block
-                          icon={<Plus className="w-3.5 h-3.5" />}
-                          onClick={() => handleAddQuestionToSection(sIdx)}
-                          className="rounded-lg text-blue-600 border-blue-200 hover:border-blue-500 text-xs py-1"
-                        >
-                          Thêm câu hỏi vào phần này
-                        </Button>
-                      )}
+                        {!isFormLocked && (
+                          <Button
+                            type="dashed"
+                            block
+                            icon={<Plus className="w-3.5 h-3.5" />}
+                            onClick={() => handleAddQuestionToSection(sIdx)}
+                            className="rounded-lg border-slate-300 text-slate-600 text-xs hover:border-blue-400 hover:text-blue-600 py-2 h-auto"
+                          >
+                            Thêm câu hỏi vào phần {sIdx + 1}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
 
@@ -812,7 +1027,7 @@ export default function S1SurveyBuilderRenderer({
             label: (
               <span className="flex items-center gap-2 px-1 py-0.5 text-xs font-semibold text-slate-700">
                 <BarChart2 className="w-3.5 h-3.5 text-emerald-600" />
-                Tổng hợp & Báo cáo ({formConfig.totalSubmissions || 0})
+                Tổng hợp & Báo cáo v{formConfig.version} ({formConfig.totalSubmissions || 0})
               </span>
             ),
             children: (
@@ -822,7 +1037,7 @@ export default function S1SurveyBuilderRenderer({
                   <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs flex items-center justify-between">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Tổng phiếu phản hồi
+                        Tổng phiếu phản hồi (v{formConfig.version})
                       </div>
                       <div className="text-2xl font-black text-blue-600 mt-1">
                         {summary?.totalSubmissions || formConfig.totalSubmissions || 0}
@@ -836,10 +1051,18 @@ export default function S1SurveyBuilderRenderer({
                   <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs flex items-center justify-between">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Trạng thái tiếp nhận
+                        Trạng thái phiên bản v{formConfig.version}
                       </div>
                       <div className="text-base font-bold text-slate-800 mt-1">
-                        {formConfig.status === 'PUBLISHED' ? 'Đang mở' : formConfig.status === 'CLOSED' ? 'Đã đóng' : 'Bản nháp'}
+                        {formConfig.status === 'PUBLISHED'
+                          ? 'Đang mở'
+                          : formConfig.status === 'CLOSED'
+                          ? 'Đã đóng link'
+                          : formConfig.status === 'APPROVED'
+                          ? 'Đã duyệt thiết kế'
+                          : formConfig.status === 'PENDING_REVIEW'
+                          ? 'Chờ duyệt'
+                          : 'Bản nháp'}
                       </div>
                     </div>
                     <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -850,13 +1073,17 @@ export default function S1SurveyBuilderRenderer({
                   <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs flex items-center justify-between">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Hồ sơ Bước 1
+                        Hồ sơ dữ liệu
                       </div>
                       <div className="mt-1">
                         {(formConfig.totalSubmissions || 0) > 0 ? (
-                          <Tag color="green" className="rounded-md text-xs">Đủ điều kiện tổng hợp</Tag>
+                          <Tag color="green" className="rounded-md text-xs">
+                            Đủ điều kiện phân tích
+                          </Tag>
                         ) : (
-                          <Tag color="orange" className="rounded-md text-xs">Chờ thu thập kết quả</Tag>
+                          <Tag color="orange" className="rounded-md text-xs">
+                            Chờ thu thập kết quả
+                          </Tag>
                         )}
                       </div>
                     </div>
@@ -926,7 +1153,9 @@ export default function S1SurveyBuilderRenderer({
                                 <div key={opt} className="space-y-1">
                                   <div className="flex justify-between text-xs text-slate-600">
                                     <span>{opt}</span>
-                                    <span className="font-semibold">{count} ({pct}%)</span>
+                                    <span className="font-semibold">
+                                      {count} ({pct}%)
+                                    </span>
                                   </div>
                                   <Progress percent={pct} size="small" strokeColor="#3b82f6" />
                                 </div>
@@ -940,7 +1169,7 @@ export default function S1SurveyBuilderRenderer({
                             {stat.textSamples && stat.textSamples.length > 0 ? (
                               stat.textSamples.map((text, tIdx) => (
                                 <div key={tIdx} className="p-2 rounded-lg bg-slate-50 text-xs text-slate-700 border border-slate-100">
-                                  "{text}"
+                                  &quot;{text}&quot;
                                 </div>
                               ))
                             ) : (
@@ -952,7 +1181,7 @@ export default function S1SurveyBuilderRenderer({
                     ))}
                   </div>
                 ) : (
-                  <Empty description="Chưa có dữ liệu phản hồi để hiển thị báo cáo" />
+                  <Empty description="Chưa có dữ liệu phản hồi để hiển thị báo cáo cho phiên bản này" />
                 )}
               </div>
             ),
@@ -962,7 +1191,7 @@ export default function S1SurveyBuilderRenderer({
             label: (
               <span className="flex items-center gap-2 px-1 py-0.5 text-xs font-semibold text-slate-700">
                 <Users className="w-3.5 h-3.5 text-purple-600" />
-                Danh sách phản hồi ({submissions.length})
+                Danh sách phản hồi v{formConfig.version} ({submissions.length})
               </span>
             ),
             children: (
@@ -1034,9 +1263,38 @@ export default function S1SurveyBuilderRenderer({
         ]}
       />
 
+      {/* Reject Modal */}
+      <Modal
+        title="Yêu cầu chỉnh sửa thiết kế biểu mẫu"
+        open={rejectModalOpen}
+        onCancel={() => {
+          setRejectModalOpen(false);
+          setRejectReason('');
+        }}
+        onOk={handleConfirmReject}
+        confirmLoading={isSaving}
+        okText="Gửi yêu cầu chỉnh sửa"
+        okType="danger"
+        cancelText="Quay lại"
+        centered
+      >
+        <div className="py-2 space-y-3">
+          <p className="text-xs text-slate-600">
+            Vui lòng nhập lý do hoặc ý kiến chỉ đạo cần chỉnh sửa (nội dung câu hỏi, thang đo, nhóm đối tượng...):
+          </p>
+          <TextArea
+            rows={4}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Nhập nhận xét / lý do yêu cầu chỉnh sửa..."
+            className="text-xs"
+          />
+        </div>
+      </Modal>
+
       {/* QR Code Modal */}
       <Modal
-        title="Mã QR Khảo sát Công khai"
+        title={`Mã QR Khảo sát Công khai (v${formConfig.version})`}
         open={qrModalOpen}
         onCancel={() => setQrModalOpen(false)}
         footer={[
@@ -1051,7 +1309,7 @@ export default function S1SurveyBuilderRenderer({
             <QRCode value={getFullPublicUrl() || 'https://euni.edu.vn'} size={200} />
           </div>
           <p className="text-xs text-slate-500 max-w-xs mx-auto">
-            Quét mã bằng điện thoại để mở trực tiếp trang điền khảo sát trực tuyến.
+            Quét mã bằng điện thoại để mở trực tiếp trang điền khảo sát trực tuyến Phiên bản v{formConfig.version}.
           </p>
         </div>
       </Modal>
@@ -1072,10 +1330,18 @@ export default function S1SurveyBuilderRenderer({
         {previewSubmission && (
           <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs space-y-1">
-              <div><strong>Họ tên:</strong> {previewSubmission.respondentName || 'Ẩn danh'}</div>
-              <div><strong>Email:</strong> {previewSubmission.respondentEmail || 'N/A'}</div>
-              <div><strong>Đơn vị:</strong> {previewSubmission.organization || 'N/A'} - {previewSubmission.position || ''}</div>
-              <div><strong>Thời gian:</strong> {new Date(previewSubmission.submittedAt).toLocaleString('vi-VN')}</div>
+              <div>
+                <strong>Họ tên:</strong> {previewSubmission.respondentName || 'Ẩn danh'}
+              </div>
+              <div>
+                <strong>Email:</strong> {previewSubmission.respondentEmail || 'N/A'}
+              </div>
+              <div>
+                <strong>Đơn vị:</strong> {previewSubmission.organization || 'N/A'} - {previewSubmission.position || ''}
+              </div>
+              <div>
+                <strong>Thời gian:</strong> {new Date(previewSubmission.submittedAt).toLocaleString('vi-VN')}
+              </div>
             </div>
 
             <Divider className="my-2" />
@@ -1088,7 +1354,9 @@ export default function S1SurveyBuilderRenderer({
                   </div>
                   <div className="text-slate-600">
                     {ans.questionType === 'LIKERT_SCALE' && (
-                      <Tag color="blue" className="text-xs">Mức đánh giá: {ans.numericValue} / 5</Tag>
+                      <Tag color="blue" className="text-xs">
+                        Mức đánh giá: {ans.numericValue} / 5
+                      </Tag>
                     )}
                     {(ans.questionType === 'SINGLE_CHOICE' || ans.questionType === 'MULTIPLE_CHOICE') && (
                       <div>{ans.selectedOptions?.join(', ') || 'Không chọn'}</div>
@@ -1105,4 +1373,6 @@ export default function S1SurveyBuilderRenderer({
       </Modal>
     </div>
   );
-}
+});
+
+export default S1SurveyBuilderRenderer;

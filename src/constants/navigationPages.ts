@@ -5,6 +5,7 @@ import {
   BookMarked,
   Shield,
   User,
+  Sparkles,
 } from 'lucide-react';
 
 export interface NavPageItem {
@@ -128,6 +129,14 @@ export const NAV_PAGES: NavPageItem[] = [
     path: '/admin/ai-prompts',
     defaultRoles: ['ADMIN', 'DTDH'],
     createUpdateRoles: ['ADMIN'],
+  },
+  {
+    id: 'ai-settings',
+    name: 'Cấu hình AI cá nhân',
+    category: 'Hệ thống',
+    path: '/ai-settings',
+    defaultRoles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
+    createUpdateRoles: ['ADMIN', 'DTDH', 'DEAN', 'HEAD_DEPT', 'LECTURER', 'COMMITTEE', 'COUNCIL', 'QA'],
   },
   {
     id: 'profile',
@@ -254,6 +263,13 @@ export const DYNAMIC_NAV_ITEMS: SidebarNavGroup[] = [
         roles: NAV_PAGES.find((p) => p.id === 'ai-prompts')?.defaultRoles,
       },
     ],
+  },
+  {
+    id: 'ai-settings',
+    label: 'Cấu hình AI',
+    icon: Sparkles,
+    path: '/ai-settings',
+    roles: NAV_PAGES.find((p) => p.id === 'ai-settings')?.defaultRoles,
   },
   {
     id: 'profile',

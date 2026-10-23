@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { usePrograms } from '@/hooks/usePrograms';
 import { useMajors } from '@/hooks/useMajors';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 import { Program } from '@/types/academic';
 
 const { Title, Text } = Typography;
@@ -226,14 +225,6 @@ export default function CurriculumProgramsListPage() {
     },
   ];
 
-  if (loadingPrograms || loadingMajors) {
-    return (
-      <AppShell>
-        <TableSkeleton rows={10} columns={5} />
-      </AppShell>
-    );
-  }
-
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
@@ -340,6 +331,7 @@ export default function CurriculumProgramsListPage() {
             </div>
           </div>
           <Table
+            loading={loadingPrograms || loadingMajors}
             dataSource={filteredPrograms}
             columns={columns}
             rowKey="id"

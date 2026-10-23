@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import {
   Typography, Card, Button, Space, Breadcrumb, Table, Tag,
-  Input, Row, Col, Tooltip, App as AntdApp
+  Input, Row, Col, Tooltip, App as AntdApp, Dropdown
 } from 'antd';
 import {
   Plus, Search, Eye,
-  Clock, CheckCircle2, AlertCircle, FileText, Ban, Layers
+  Clock, CheckCircle2, AlertCircle, FileText, Ban, Layers, MoreHorizontal
 } from 'lucide-react';
 import { surveyCampaignService, SurveyCampaignResponse } from '@/services/surveyCampaignService';
 import { Modal, message } from 'antd';
@@ -66,21 +66,47 @@ export default function CurriculumDevelopmentListPage() {
   };
 
   const getStatusTag = (status: string) => {
+    const baseClass = "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap";
     switch (status) {
+      case 'IN_PROGRESS':
       case 'ACTIVE':
-        return <Tag icon={<CheckCircle2 size={12} />} color="success" className="rounded-full px-3">Đang diễn ra</Tag>;
+        return <Tag icon={<Clock size={13} className="shrink-0" />} color="processing" className={baseClass}>Đang thực hiện</Tag>;
       case 'DRAFT':
-        return <Tag icon={<AlertCircle size={12} />} color="warning" className="rounded-full px-3">Bản nháp</Tag>;
+        return <Tag icon={<AlertCircle size={13} className="shrink-0" />} color="warning" className={baseClass}>Bản nháp</Tag>;
       case 'COMPLETED':
       case 'CLOSED':
-        return <Tag icon={<Clock size={12} />} color="default" className="rounded-full px-3">Đã kết thúc</Tag>;
+        return <Tag icon={<Clock size={13} className="shrink-0" />} color="default" className={baseClass}>Đã kết thúc</Tag>;
       case 'APPROVED':
-        return <Tag icon={<CheckCircle2 size={12} />} color="gold" className="rounded-full px-3">Đã phê duyệt (Synced)</Tag>;
+        return <Tag icon={<CheckCircle2 size={13} className="shrink-0" />} color="gold" className={baseClass}>Đã hoàn thành</Tag>;
       case 'CANCELLED':
-        return <Tag icon={<Ban size={12} />} color="error" className="rounded-full px-3">Đã hủy</Tag>;
+        return <Tag icon={<Ban size={13} className="shrink-0" />} color="error" className={baseClass}>Đã hủy</Tag>;
       default:
-        return <Tag className="rounded-full px-3">{status}</Tag>;
+        return <Tag className={baseClass}>{status}</Tag>;
     }
+  };
+
+  const getActionMenuItems = (record: SurveyCampaignResponse) => {
+    const items = [
+      {
+        key: 'view',
+        icon: <Eye size={15} className="text-slate-600 shrink-0" />,
+        label: <span className="text-xs font-medium text-slate-700">Xem chi tiết</span>,
+        onClick: () => router.push(`/curriculum/development/${record.id}`),
+        className: 'hover:!bg-slate-50 !rounded-lg !py-2 !px-2.5 cursor-pointer',
+      },
+    ];
+
+    if (record.status !== 'APPROVED' && record.status !== 'CANCELLED') {
+      items.push({
+        key: 'cancel',
+        icon: <Ban size={15} className="text-slate-600 shrink-0" />,
+        label: <span className="text-xs font-medium text-slate-700">Hủy đợt</span>,
+        onClick: () => handleCancelCampaign(record),
+        className: 'hover:!bg-slate-50 !rounded-lg !py-2 !px-2.5 cursor-pointer',
+      });
+    }
+
+    return items;
   };
 
   const columns: ColumnsType<SurveyCampaignResponse> = [
@@ -116,6 +142,7 @@ export default function CurriculumDevelopmentListPage() {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
+      width: 190,
       render: (status) => getStatusTag(status),
     },
     {
@@ -131,32 +158,24 @@ export default function CurriculumDevelopmentListPage() {
     {
       title: 'Thao tác',
       key: 'action',
-      align: 'right',
+      width: 80,
+      align: 'center',
       render: (_, record) => (
-        <Space size="middle">
-          <Tooltip title="Vào thực hiện quy trình xây dựng">
-            <Button
-              type="primary"
-              size="small"
-              icon={<Eye size={14} />}
-              onClick={() => router.push(`/curriculum/development/${record.id}`)}
-              className="rounded-lg bg-blue-600 hover:bg-blue-700 font-medium text-xs flex items-center gap-1.5 px-3 h-8 shadow-xs"
-            >
-              Vào thực hiện
-            </Button>
-          </Tooltip>
-          {record.status !== 'APPROVED' && record.status !== 'CANCELLED' && (
-            <Tooltip title="Hủy đợt">
-              <Button
-                type="text"
-                danger
-                icon={<Ban size={16} />}
-                onClick={() => handleCancelCampaign(record)}
-                className="hover:bg-rose-50 rounded-lg"
-              />
-            </Tooltip>
-          )}
-        </Space>
+        <Dropdown
+          menu={{
+            items: getActionMenuItems(record),
+            className: 'p-1 min-w-[150px] rounded-xl shadow-lg border border-slate-100 bg-white',
+          }}
+          trigger={['click']}
+          placement="bottomRight"
+        >
+          <Button
+            type="text"
+            icon={<MoreHorizontal size={18} className="text-slate-600" />}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 cursor-pointer"
+            aria-label="Thao tác"
+          />
+        </Dropdown>
       ),
     },
   ];

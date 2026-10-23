@@ -27,7 +27,6 @@ import {
   Book
 } from 'lucide-react';
 import { useCourses } from '@/hooks/useCourses';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 import { Course } from '@/types/academic';
 
 const { Title, Text } = Typography;
@@ -141,10 +140,6 @@ function CourseManagementContent() {
     },
   ];
 
-  if (isLoading) {
-    return <TableSkeleton rows={10} columns={4} />;
-  }
-
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -190,6 +185,7 @@ function CourseManagementContent() {
           <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg" />
         </div>
         <Table 
+          loading={isLoading}
           dataSource={filteredCourses} 
           columns={columns} 
           rowKey="id"

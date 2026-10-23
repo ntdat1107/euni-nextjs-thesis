@@ -2,36 +2,51 @@
 
 import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { useParams } from 'next/navigation';
-import { Button, Input, Checkbox, Typography, Divider } from 'antd';
+import { Button, Input, Checkbox, Typography, Collapse, Select, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { surveyCampaignService } from '@/services/surveyCampaignService';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 const RichtextEditor = dynamic(() => import('../../common/RichtextEditor'), {
   ssr: false,
 });
 
-interface PEO {
+export type DomainType = 'KNOWLEDGE' | 'SKILL' | 'ATTITUDE';
+
+export const DOMAIN_OPTIONS: { value: DomainType; label: string }[] = [
+  { value: 'KNOWLEDGE', label: 'Kiến thức' },
+  { value: 'SKILL', label: 'Kỹ năng' },
+  { value: 'ATTITUDE', label: 'Mức độ tự chủ và trách nhiệm / Thái độ' },
+];
+
+export interface PO {
+  code?: string;
   content: string;
 }
 
-interface PI {
+export type PEO = PO;
+
+export interface PI {
+  code?: string;
   content: string;
 }
 
-interface PLO {
+export interface PLO {
+  code?: string;
+  domain?: DomainType;
   content: string;
   pis: PI[];
 }
 
-interface S2PLOData {
-  peos: PEO[];
+export interface S2PLOData {
+  pos: PO[];
+  peos?: PO[]; // Backward compatibility
   plos: PLO[];
-  matrix: boolean[][][]; // [peoIdx][ploIdx][piIdx]
+  matrix: boolean[][][]; // [poIdx][ploIdx][piIdx]
   mucTieuHeadingHtml: string;
   chuanDauRaHeadingHtml: string;
   // Computed HTML for export/display
@@ -46,7 +61,7 @@ export interface S2PLORef {
 }
 
 interface S2PLORendererProps {
-  data?: any; 
+  data?: any;
   readonly?: boolean;
   onChange?: (data: S2PLOData) => void;
 }
@@ -65,11 +80,13 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
 
   const [campaignMeta, setCampaignMeta] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [activeAccordionKeys, setActiveAccordionKeys] = useState<string[]>(['1', '2', '3']);
+
   const [state, setState] = useState<S2PLOData>({
-    mucTieuHeadingHtml: '<p><b>1. Mục tiêu</b></p>',
+    mucTieuHeadingHtml: '<p><b>1. Mục tiêu đào tạo (PO)</b></p>',
     chuanDauRaHeadingHtml: '<p><b>2. Chuẩn đầu ra (PLO)</b></p>',
-    peos: [{ content: '' }],
-    plos: [{ content: '', pis: [{ content: '' }, { content: '' }, { content: '' }] }],
+    pos: [{ content: '' }],
+    plos: [{ content: '', domain: 'KNOWLEDGE', pis: [{ content: '' }, { content: '' }, { content: '' }] }],
     matrix: [],
   });
 
@@ -80,6 +97,15 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
       delete next[key];
       return next;
     });
+  };
+
+  const getPoCode = (idx: number) => `PO${idx + 1}`;
+  const getPloCode = (idx: number) => `PLO${idx + 1}`;
+  const getPiCode = (ploIdx: number, piIdx: number) => `PI${ploIdx + 1}.${piIdx + 1}`;
+
+  const getDomainLabel = (domain?: DomainType) => {
+    const found = DOMAIN_OPTIONS.find(d => d.value === domain);
+    return found ? found.label : 'Kiến thức';
   };
 
   useImperativeHandle(ref, () => ({
@@ -94,14 +120,14 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
         if (!firstInvalidId) firstInvalidId = 'muc-tieu-heading-editor';
       }
 
-      if (!state.peos || state.peos.length === 0) {
-        newErrors['peo-0'] = 'Vui lòng thêm ít nhất một PEO';
-        if (!firstInvalidId) firstInvalidId = 'peo-input-0';
+      if (!state.pos || state.pos.length === 0) {
+        newErrors['po-0'] = 'Vui lòng thêm ít nhất một mục tiêu PO';
+        if (!firstInvalidId) firstInvalidId = 'po-input-0';
       } else {
-        state.peos.forEach((peo, idx) => {
-          if (!peo.content || !peo.content.trim()) {
-            newErrors[`peo-${idx}`] = `Vui lòng nhập nội dung ${getPeoCode(idx)}`;
-            if (!firstInvalidId) firstInvalidId = `peo-input-${idx}`;
+        state.pos.forEach((po, idx) => {
+          if (!po.content || !po.content.trim()) {
+            newErrors[`po-${idx}`] = `Vui lòng nhập nội dung ${getPoCode(idx)}`;
+            if (!firstInvalidId) firstInvalidId = `po-input-${idx}`;
           }
         });
       }
@@ -155,7 +181,7 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
       const mucTieu = buildMucTieuHtml(state);
       const chuanDauRa = buildChuanDauRaHtml(state);
       const maTranMucTieuVaCDR = buildMatrixHtml(state);
-      return { ...state, mucTieu, chuanDauRa, maTranMucTieuVaCDR };
+      return { ...state, peos: state.pos, mucTieu, chuanDauRa, maTranMucTieuVaCDR };
     }
   }));
 
@@ -181,23 +207,18 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
     loadCampaignMeta();
   }, [campaignId]);
 
-  const getPeoCode = (idx: number) => `PEO${idx + 1}`;
-  const getPloCode = (idx: number) => `PLO${idx + 1}`;
-  const getPiCode = (ploIdx: number, piIdx: number) => `PI${ploIdx + 1}.${piIdx + 1}`;
-
-  const ensureMatrixShape = useCallback((peos: PEO[], plos: PLO[], currentMatrix: boolean[][][]) => {
-    const peoCount = peos.length;
+  const ensureMatrixShape = useCallback((pos: PO[], plos: PLO[], currentMatrix: boolean[][][]) => {
+    const poCount = pos.length;
     const ploCount = plos.length;
 
-    const newMatrix = Array.from({ length: peoCount }, (_, peoIdx) =>
+    return Array.from({ length: poCount }, (_, poIdx) =>
       Array.from({ length: ploCount }, (_, ploIdx) => {
         const piCount = plos[ploIdx]?.pis.length || 0;
         return Array.from({ length: piCount }, (_, piIdx) => {
-          return currentMatrix?.[peoIdx]?.[ploIdx]?.[piIdx] ?? false;
+          return currentMatrix?.[poIdx]?.[ploIdx]?.[piIdx] ?? false;
         });
       })
     );
-    return newMatrix;
   }, []);
 
   useEffect(() => {
@@ -207,14 +228,37 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
     }
     if (data && typeof data === 'object') {
       const source = data.ploBuilder || data;
+      const rawPlos = Array.isArray(source.plos) ? source.plos : [
+        { content: '', domain: 'KNOWLEDGE', pis: [{ content: '' }, { content: '' }, { content: '' }] }
+      ];
+
+      const mappedPlos: PLO[] = rawPlos.map((plo: any, ploIdx: number) => ({
+        code: plo.code || getPloCode(ploIdx),
+        content: plo.content || '',
+        domain: plo.domain || 'KNOWLEDGE',
+        pis: Array.isArray(plo.pis)
+          ? plo.pis.map((pi: any, piIdx: number) => ({
+              code: pi.code || getPiCode(ploIdx, piIdx),
+              content: pi.content || '',
+            }))
+          : [{ content: '' }]
+      }));
+
+      const rawPos = Array.isArray(source.pos) ? source.pos : (Array.isArray(source.peos) ? source.peos : [{ content: '' }]);
+      const mappedPos: PO[] = rawPos.map((po: any, idx: number) => ({
+        code: po.code || getPoCode(idx),
+        content: po.content || ''
+      }));
+
       const newState: S2PLOData = {
-        mucTieuHeadingHtml: source.mucTieuHeadingHtml || '<p><b>1. Mục tiêu</b></p>',
+        mucTieuHeadingHtml: source.mucTieuHeadingHtml || '<p><b>1. Mục tiêu đào tạo (PO)</b></p>',
         chuanDauRaHeadingHtml: source.chuanDauRaHeadingHtml || '<p><b>2. Chuẩn đầu ra (PLO)</b></p>',
-        peos: Array.isArray(source.peos) ? source.peos : [{ content: '' }],
-        plos: Array.isArray(source.plos) ? source.plos : [{ content: '', pis: [{ content: '' }, { content: '' }, { content: '' }] }],
+        pos: mappedPos,
+        peos: mappedPos,
+        plos: mappedPlos,
         matrix: Array.isArray(source.matrix) ? source.matrix : [],
       };
-      newState.matrix = ensureMatrixShape(newState.peos, newState.plos, newState.matrix);
+      newState.matrix = ensureMatrixShape(newState.pos, newState.plos, newState.matrix);
       setState(newState);
     }
   }, [data, ensureMatrixShape]);
@@ -223,10 +267,10 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
     const mucTieu = buildMucTieuHtml(targetState);
     const chuanDauRa = buildChuanDauRaHtml(targetState);
     const maTranMucTieuVaCDR = buildMatrixHtml(targetState);
-    const committedState = { ...targetState, mucTieu, chuanDauRa, maTranMucTieuVaCDR };
+    const committedState = { ...targetState, peos: targetState.pos, mucTieu, chuanDauRa, maTranMucTieuVaCDR };
     if (onChange) onChange(committedState);
   }, [onChange]);
-  
+
   useEffect(() => {
     debouncedTriggerRef.current = (targetState: S2PLOData) => {
       if (debounceTimerRef.current) {
@@ -244,15 +288,16 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
   const handleStateChange = (updates: Partial<S2PLOData>, immediate = false) => {
     isLocalChangeRef.current = true;
     setState((prev) => {
-      const nextPeos = updates.peos !== undefined ? updates.peos : prev.peos;
+      const nextPos = updates.pos !== undefined ? updates.pos : prev.pos;
       const nextPlos = updates.plos !== undefined ? updates.plos : prev.plos;
       const nextMatrixBase = updates.matrix !== undefined ? updates.matrix : prev.matrix;
-      const nextMatrix = ensureMatrixShape(nextPeos, nextPlos, nextMatrixBase);
-      
+      const nextMatrix = ensureMatrixShape(nextPos, nextPlos, nextMatrixBase);
+
       const nextState = {
         ...prev,
         ...updates,
-        peos: nextPeos,
+        pos: nextPos,
+        peos: nextPos,
         plos: nextPlos,
         matrix: nextMatrix,
       };
@@ -282,58 +327,73 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
   };
 
   const escapeHtml = (raw: string): string => {
-    return (raw || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    return (raw || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   };
 
   const textToInlineHtml = (raw: string): string => {
-    return escapeHtml(raw).replace(/\n/g, "<br/>");
+    return escapeHtml(raw).replace(/\n/g, '<br/>');
   };
 
   function buildMucTieuHtml(s: S2PLOData): string {
-    const peosHtml = s.peos.map((peo, idx) => `<p><b>${getPeoCode(idx)}.</b> ${textToInlineHtml(peo.content)}</p>`).join("");
-    return `${s.mucTieuHeadingHtml || ''}${peosHtml}`;
+    const posHtml = s.pos.map((po, idx) => `<p><b>${getPoCode(idx)}.</b> ${textToInlineHtml(po.content)}</p>`).join('');
+    return `${s.mucTieuHeadingHtml || ''}${posHtml}`;
   }
 
   function buildChuanDauRaHtml(s: S2PLOData): string {
     const plosHtml = s.plos.map((plo, ploIdx) => {
-      const pisHtml = plo.pis.map((pi, piIdx) => `<p style="margin-left: 16px;"><b>${getPiCode(ploIdx, piIdx)}.</b> ${textToInlineHtml(pi.content)}</p>`).join("");
-      return `<div><p><b>${getPloCode(ploIdx)}.</b> ${textToInlineHtml(plo.content)}</p>${pisHtml}</div>`;
-    }).join("");
+      const domainText = getDomainLabel(plo.domain);
+      const pisHtml = plo.pis.map((pi, piIdx) => `<p style="margin-left: 16px;"><b>${getPiCode(ploIdx, piIdx)}.</b> ${textToInlineHtml(pi.content)}</p>`).join('');
+      return `<div><p><b>${getPloCode(ploIdx)} [${domainText}]:</b> ${textToInlineHtml(plo.content)}</p>${pisHtml}</div>`;
+    }).join('');
     return `${s.chuanDauRaHeadingHtml || ''}${plosHtml}`;
   }
 
   function buildMatrixHtml(s: S2PLOData): string {
-    if (!s.peos.length || !s.plos.length) return "";
-    const headerRow1 = `<tr><th rowspan="2" style="text-align:left;">Mục tiêu</th>${s.plos.map((plo, ploIdx) => `<th colspan="${plo.pis.length}">${getPloCode(ploIdx)}</th>`).join("")}</tr>`;
-    const headerRow2 = `<tr>${s.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => `<th>${getPiCode(ploIdx, piIdx)}</th>`).join("")).join("")}</tr>`;
-    const body = s.peos.map((_, peoIdx) => {
-      const cells = s.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => `<td>${s.matrix?.[peoIdx]?.[ploIdx]?.[piIdx] ? "✓" : ""}</td>`).join("")).join("");
-      return `<tr><td><b>${getPeoCode(peoIdx)}</b></td>${cells}</tr>`;
-    }).join("");
+    if (!s.pos.length || !s.plos.length) return '';
+    const headerRow1 = `<tr><th rowspan="2" style="text-align:left;">Mục tiêu (PO)</th>${s.plos.map((plo, ploIdx) => `<th colspan="${plo.pis.length}">${getPloCode(ploIdx)}</th>`).join('')}</tr>`;
+    const headerRow2 = `<tr>${s.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => `<th>${getPiCode(ploIdx, piIdx)}</th>`).join('')).join('')}</tr>`;
+    const body = s.pos.map((_, poIdx) => {
+      const cells = s.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => `<td>${s.matrix?.[poIdx]?.[ploIdx]?.[piIdx] ? '✓' : ''}</td>`).join('')).join('');
+      return `<tr><td><b>${getPoCode(poIdx)}</b></td>${cells}</tr>`;
+    }).join('');
     return `<table class="matrix-table"><thead>${headerRow1}${headerRow2}</thead><tbody>${body}</tbody></table>`;
   }
 
-  // Actions
-  const addPEO = () => {
-    if (state.peos.length >= 5) return;
-    handleStateChange({ peos: [...state.peos, { content: '' }] }, true);
+  // PO Actions
+  const addPO = () => {
+    if (state.pos.length >= 10) return;
+    const nextCode = getPoCode(state.pos.length);
+    handleStateChange({ pos: [...state.pos, { code: nextCode, content: '' }] }, true);
   };
 
-  const removePEO = (idx: number) => {
-    handleStateChange({ peos: state.peos.filter((_, i) => i !== idx) }, true);
+  const removePO = (idx: number) => {
+    handleStateChange({ pos: state.pos.filter((_, i) => i !== idx) }, true);
   };
 
-  const updatePEO = (idx: number, content: string) => {
+  const updatePO = (idx: number, content: string) => {
     if (content.trim()) {
-      clearError(`peo-${idx}`);
+      clearError(`po-${idx}`);
     }
-    const newPeos = state.peos.map((peo, i) => i === idx ? { ...peo, content } : peo);
-    handleStateChange({ peos: newPeos }, false);
+    const newPos = state.pos.map((po, i) => i === idx ? { ...po, content } : po);
+    handleStateChange({ pos: newPos }, false);
   };
 
+  // PLO Actions
   const addPLO = () => {
-    handleStateChange({ 
-      plos: [...state.plos, { content: '', pis: [{ content: '' }, { content: '' }, { content: '' }] }] 
+    const nextPloIdx = state.plos.length;
+    handleStateChange({
+      plos: [
+        ...state.plos,
+        {
+          code: getPloCode(nextPloIdx),
+          domain: 'KNOWLEDGE',
+          content: '',
+          pis: [
+            { code: getPiCode(nextPloIdx, 0), content: '' },
+            { code: getPiCode(nextPloIdx, 1), content: '' }
+          ]
+        }
+      ]
     }, true);
   };
 
@@ -349,9 +409,17 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
     handleStateChange({ plos: newPlos }, false);
   };
 
+  const updatePloDomain = (idx: number, domain: DomainType) => {
+    const newPlos = state.plos.map((plo, i) => i === idx ? { ...plo, domain } : plo);
+    handleStateChange({ plos: newPlos }, true);
+  };
+
+  // PI Actions
   const addPI = (ploIdx: number) => {
-    const newPlos = state.plos.map((plo, idx) => 
-      idx === ploIdx ? { ...plo, pis: [...plo.pis, { content: '' }] } : plo
+    const targetPlo = state.plos[ploIdx];
+    const nextPiIdx = targetPlo.pis.length;
+    const newPlos = state.plos.map((plo, idx) =>
+      idx === ploIdx ? { ...plo, pis: [...plo.pis, { code: getPiCode(ploIdx, nextPiIdx), content: '' }] } : plo
     );
     handleStateChange({ plos: newPlos }, true);
   };
@@ -361,7 +429,7 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
       plos: state.plos.map((plo, idx) => {
         if (idx !== ploIdx) return plo;
         const nextPis = plo.pis.filter((_, pIdx) => pIdx !== piIdx);
-        return { ...plo, pis: nextPis.length ? nextPis : [{ content: '' }] };
+        return { ...plo, pis: nextPis.length ? nextPis : [{ code: getPiCode(ploIdx, 0), content: '' }] };
       })
     }, true);
   };
@@ -378,263 +446,378 @@ export const S2PLORenderer = forwardRef<S2PLORef, S2PLORendererProps>(({
     handleStateChange({ plos: newPlos }, false);
   };
 
-  const toggleMatrix = (peoIdx: number, ploIdx: number, piIdx: number) => {
+  const toggleMatrix = (poIdx: number, ploIdx: number, piIdx: number) => {
     const newMatrix = [...state.matrix];
-    if (!newMatrix[peoIdx]) newMatrix[peoIdx] = [];
-    if (!newMatrix[peoIdx][ploIdx]) newMatrix[peoIdx][ploIdx] = [];
-    newMatrix[peoIdx][ploIdx][piIdx] = !newMatrix[peoIdx][ploIdx][piIdx];
+    if (!newMatrix[poIdx]) newMatrix[poIdx] = [];
+    if (!newMatrix[poIdx][ploIdx]) newMatrix[poIdx][ploIdx] = [];
+    newMatrix[poIdx][ploIdx][piIdx] = !newMatrix[poIdx][ploIdx][piIdx];
     handleStateChange({ matrix: newMatrix }, true);
   };
 
-  return (
-    <div className="space-y-6 w-full pb-10">
-      {/* SECTION 1: MỤC TIÊU */}
-      <section className="space-y-4">
-        <div className="space-y-3">
-          <div className="text-base font-bold text-slate-800 flex items-center gap-2 border-l-4 border-brand-500 pl-3 py-0.5 font-sans">
-            <span>1. Đề mục mục tiêu (mục 1)</span>
-            <span className="text-red-500">*</span>
-          </div>
-          <div id="muc-tieu-heading-editor">
-            <RichtextEditor
-              value={state.mucTieuHeadingHtml}
-              disabled={readonly}
-              contentType="PEO"
-              metadata={campaignMeta}
-              minHeight={120}
-              onChange={(val) => {
-                clearError('mucTieuHeading');
-                handleStateChange({ mucTieuHeadingHtml: val }, false);
-              }}
-              onApplyParsed={(parsed) => {
-                if (parsed.peos && parsed.peos.length > 0) {
-                  const newPeos = parsed.peos.map(text => ({ content: text }));
+  // Accordion Sections
+  const collapseItems = [
+    {
+      key: '1',
+      label: (
+        <span className="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <span className="text-amber-500">✦</span> Mục tiêu chương trình đào tạo (PO)
+        </span>
+      ),
+      children: (
+        <div className="space-y-5 pt-2">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <span>Đề mục mục tiêu đào tạo (mục 1)</span>
+              <span className="text-red-500">*</span>
+            </div>
+            <div id="muc-tieu-heading-editor">
+              <RichtextEditor
+                value={state.mucTieuHeadingHtml}
+                disabled={readonly}
+                contentType="PEO"
+                metadata={campaignMeta}
+                minHeight={100}
+                onChange={(val) => {
                   clearError('mucTieuHeading');
-                  handleStateChange({
-                    mucTieuHeadingHtml: parsed.mucTieuChung || state.mucTieuHeadingHtml,
-                    peos: newPeos
-                  }, true);
-                }
-              }}
-            />
-          </div>
-          {errors['mucTieuHeading'] && (
-            <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
-              <AlertCircle size={13} className="shrink-0" />
-              <span>{errors['mucTieuHeading']}</span>
+                  handleStateChange({ mucTieuHeadingHtml: val }, false);
+                }}
+                onApplyParsed={(parsed) => {
+                  if (parsed.peos && parsed.peos.length > 0) {
+                    const newPos = parsed.peos.map((text, idx) => ({ code: getPoCode(idx), content: text }));
+                    clearError('mucTieuHeading');
+                    handleStateChange({
+                      mucTieuHeadingHtml: parsed.mucTieuChung || state.mucTieuHeadingHtml,
+                      pos: newPos
+                    }, true);
+                  }
+                }}
+              />
             </div>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          {state.peos.map((peo, idx) => (
-            <div key={idx} className="flex gap-3 items-start">
-              <div className="w-16 pt-2 shrink-0">
-                <Text strong className="text-sm text-slate-800">{getPeoCode(idx)}</Text>
+            {errors['mucTieuHeading'] && (
+              <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                <AlertCircle size={13} className="shrink-0" />
+                <span>{errors['mucTieuHeading']}</span>
               </div>
-              <div className="flex-1">
-                <TextArea
-                  id={`peo-input-${idx}`}
-                  value={peo.content}
-                  disabled={readonly}
-                  onChange={(e) => updatePEO(idx, e.target.value)}
-                  onBlur={handleBlur}
-                  placeholder="Nhập nội dung PEO..."
-                  autoSize={{ minRows: 3 }}
-                  className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
-                    errors[`peo-${idx}`]
-                      ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
-                      : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
-                  }`}
-                />
-                {errors[`peo-${idx}`] && (
-                  <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
-                    <AlertCircle size={13} className="shrink-0" />
-                    <span>{errors[`peo-${idx}`]}</span>
-                  </div>
-                )}
-              </div>
-              {!readonly && (
-                <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removePEO(idx)} className="mt-1" />
-              )}
-            </div>
-          ))}
-          {!readonly && (
-            <Button type="link" icon={<PlusOutlined />} onClick={addPEO} disabled={state.peos.length >= 5} className="text-brand-600 hover:text-brand-700 font-semibold p-0">
-              Thêm PEO
-            </Button>
-          )}
-        </div>
-      </section>
-
-      <Divider className="!my-6" />
-
-      {/* SECTION 2: CHUẨN ĐẦU RA */}
-      <section className="space-y-4">
-        <div className="space-y-3">
-          <div className="text-base font-bold text-slate-800 flex items-center gap-2 border-l-4 border-brand-500 pl-3 py-0.5 font-sans">
-            <span>2. Đề mục chuẩn đầu ra (mục 2)</span>
-            <span className="text-red-500">*</span>
+            )}
           </div>
-          <div id="chuan-dau-ra-heading-editor">
-            <RichtextEditor
-              value={state.chuanDauRaHeadingHtml}
-              disabled={readonly}
-              contentType="PLO"
-              metadata={campaignMeta}
-              minHeight={120}
-              onChange={(val) => {
-                clearError('chuanDauRaHeading');
-                handleStateChange({ chuanDauRaHeadingHtml: val }, false);
-              }}
-            />
-          </div>
-          {errors['chuanDauRaHeading'] && (
-            <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
-              <AlertCircle size={13} className="shrink-0" />
-              <span>{errors['chuanDauRaHeading']}</span>
-            </div>
-          )}
-        </div>
 
-        <div className="space-y-6">
-          {state.plos.length === 0 && <Text type="secondary" italic>Chưa có PLO.</Text>}
-          {state.plos.map((plo, ploIdx) => (
-            <div key={ploIdx} className="border border-slate-200 rounded-2xl p-6 bg-slate-50/20 space-y-4 hover:border-slate-300 transition-colors shadow-sm mb-6">
-              <div className="flex items-center justify-between">
-                <Text strong className="text-sm text-slate-800">{getPloCode(ploIdx)}</Text>
-                {!readonly && <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removePLO(ploIdx)} />}
-              </div>
-              <div className="w-full">
-                <TextArea
-                  id={`plo-input-${ploIdx}`}
-                  value={plo.content}
-                  disabled={readonly}
-                  onChange={(e) => updatePLO(ploIdx, e.target.value)}
-                  onBlur={handleBlur}
-                  placeholder="Nhập nội dung PLO..."
-                  autoSize={{ minRows: 2 }}
-                  className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
-                    errors[`plo-${ploIdx}`]
-                      ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
-                      : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
-                  }`}
-                />
-                {errors[`plo-${ploIdx}`] && (
-                  <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
-                    <AlertCircle size={13} className="shrink-0" />
-                    <span>{errors[`plo-${ploIdx}`]}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200 space-y-4 !mt-5">
-                <div className="border-b border-slate-150 pb-2">
-                  <Text strong className="text-sm text-slate-700">PI của {getPloCode(ploIdx)}</Text>
+          <div className="space-y-3">
+            {state.pos.map((po, idx) => (
+              <div key={idx} className="flex gap-3 items-start">
+                <div className="w-16 pt-2 shrink-0">
+                  <span className="text-xs font-bold text-slate-800 font-mono">{getPoCode(idx)}</span>
                 </div>
-                <div className="space-y-3">
-                  {plo.pis.map((pi, piIdx) => (
-                    <div key={piIdx} className="flex gap-3 items-start">
-                      <div className="w-20 pt-2 shrink-0">
-                        <Text strong className="text-xs text-slate-800">{getPiCode(ploIdx, piIdx)}</Text>
-                      </div>
-                      <div className="flex-1">
-                        <TextArea
-                          id={`pi-input-${ploIdx}-${piIdx}`}
-                          value={pi.content}
-                          disabled={readonly}
-                          onChange={(e) => updatePI(ploIdx, piIdx, e.target.value)}
-                          onBlur={handleBlur}
-                          placeholder="Nội dung PI..."
-                          autoSize={{ minRows: 2 }}
-                          className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 disabled:cursor-default ${
-                            errors[`pi-${ploIdx}-${piIdx}`]
-                              ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
-                              : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
-                          }`}
-                        />
-                        {errors[`pi-${ploIdx}-${piIdx}`] && (
-                          <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
-                            <AlertCircle size={13} className="shrink-0" />
-                            <span>{errors[`pi-${ploIdx}-${piIdx}`]}</span>
-                          </div>
-                        )}
-                      </div>
-                      {!readonly && <Button type="text" danger size="small" icon={<DeleteOutlined className="text-xs" />} onClick={() => removePI(ploIdx, piIdx)} />}
-                    </div>
-                  ))}
-                  {!readonly && (
-                    <div className="pt-2 border-t border-dashed border-slate-200 mt-2">
-                      <Button 
-                        type="link" 
-                        size="small" 
-                        icon={<PlusOutlined />} 
-                        onClick={() => addPI(ploIdx)} 
-                        className="font-semibold text-brand-600 hover:text-brand-700 p-0"
-                      >
-                        Thêm PI
-                      </Button>
+                <div className="flex-1">
+                  <TextArea
+                    id={`po-input-${idx}`}
+                    value={po.content}
+                    disabled={readonly}
+                    onChange={(e) => updatePO(idx, e.target.value)}
+                    onBlur={handleBlur}
+                    placeholder="Nhập nội dung mục tiêu đào tạo (PO)..."
+                    autoSize={{ minRows: 2 }}
+                    className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 ${
+                      errors[`po-${idx}`]
+                        ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                        : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                    }`}
+                  />
+                  {errors[`po-${idx}`] && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>{errors[`po-${idx}`]}</span>
                     </div>
                   )}
                 </div>
+                {!readonly && (
+                  <button
+                    type="button"
+                    onClick={() => removePO(idx)}
+                    title="Xóa PO"
+                    className="w-8 h-8 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 flex items-center justify-center shrink-0 mt-1 transition-colors"
+                  >
+                    <DeleteOutlined className="text-xs" />
+                  </button>
+                )}
               </div>
+            ))}
+            {!readonly && (
+              <Button
+                type="link"
+                icon={<PlusOutlined />}
+                onClick={addPO}
+                disabled={state.pos.length >= 10}
+                className="text-brand-600 hover:text-brand-700 font-semibold p-0 text-xs"
+              >
+                + Thêm mục tiêu (PO)
+              </Button>
+            )}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: '2',
+      label: (
+        <span className="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <span className="text-amber-500">✦</span> Chuẩn đầu ra (PO/PLO) &amp; Chỉ số PI
+        </span>
+      ),
+      children: (
+        <div className="space-y-6 pt-2">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <span>Chuẩn đầu ra CTĐT (PO/PLO) và chỉ số PI:</span>
+              <span className="text-red-500">*</span>
             </div>
-          ))}
-          {!readonly && (
-            <Button type="link" icon={<PlusOutlined />} onClick={addPLO} className="text-brand-600 hover:text-brand-700 font-semibold p-0">
-              Thêm PLO
-            </Button>
-          )}
-        </div>
-      </section>
+            <div id="chuan-dau-ra-heading-editor">
+              <RichtextEditor
+                value={state.chuanDauRaHeadingHtml}
+                disabled={readonly}
+                contentType="PLO"
+                metadata={campaignMeta}
+                minHeight={100}
+                onChange={(val) => {
+                  clearError('chuanDauRaHeading');
+                  handleStateChange({ chuanDauRaHeadingHtml: val }, false);
+                }}
+              />
+            </div>
+            {errors['chuanDauRaHeading'] && (
+              <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                <AlertCircle size={13} className="shrink-0" />
+                <span>{errors['chuanDauRaHeading']}</span>
+              </div>
+            )}
+          </div>
 
-      <Divider className="!my-6" />
+          <div className="space-y-6">
+            {state.plos.length === 0 && <Text type="secondary" italic>Chưa có PLO nào.</Text>}
+            {state.plos.map((plo, ploIdx) => (
+              <div
+                key={ploIdx}
+                className="border border-slate-200 rounded-xl p-4 bg-white space-y-4 hover:border-slate-300 transition-colors shadow-2xs"
+              >
+                {/* PLO Row */}
+                <div className="flex flex-col md:flex-row gap-3 items-start">
+                  <div className="w-16 pt-2 shrink-0">
+                    <span className="text-xs font-bold text-slate-800 font-mono">{getPloCode(ploIdx)}</span>
+                  </div>
 
-      {/* SECTION 3: MATRIX */}
-      <section className="space-y-4">
-        <div className="text-base font-bold text-slate-800 border-l-4 border-brand-500 pl-3 py-0.5 font-sans">
-          3. Ma trận tích hợp mục tiêu & chuẩn đầu ra
-        </div>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-xs border-collapse">
-            <thead className="bg-slate-50">
-              <tr>
-                <th rowSpan={2} className="border border-slate-200 p-2 text-left font-semibold text-slate-500">Mục tiêu</th>
-                {state.plos.map((plo, ploIdx) => (
-                  <th key={ploIdx} colSpan={plo.pis.length} className="border border-slate-200 p-2 text-center font-semibold text-slate-500 border-l">
-                    {getPloCode(ploIdx)}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {state.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => (
-                  <th key={`${ploIdx}-${piIdx}`} className="border border-slate-200 p-2 text-center font-medium text-slate-500 border-l">
-                    {getPiCode(ploIdx, piIdx)}
-                  </th>
-                )))}
-              </tr>
-            </thead>
-            <tbody>
-              {state.peos.map((peo, peoIdx) => (
-                <tr key={peoIdx} className="hover:bg-slate-50">
-                  <td className="border border-slate-200 p-2 font-medium text-slate-700">{getPeoCode(peoIdx)}</td>
-                  {state.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => (
-                    <td key={`${peoIdx}-${ploIdx}-${piIdx}`} className="border border-slate-200 p-2 text-center border-l">
-                      <Checkbox
-                        checked={!!state.matrix?.[peoIdx]?.[ploIdx]?.[piIdx]}
-                        disabled={readonly}
-                        onChange={() => toggleMatrix(peoIdx, ploIdx, piIdx)}
+                  <div className="w-48 shrink-0">
+                    {readonly ? (
+                      <Tag
+                        color={plo.domain === 'SKILL' ? 'blue' : plo.domain === 'ATTITUDE' ? 'gold' : 'green'}
+                        className="rounded font-semibold text-xs py-0.5 px-2.5"
+                      >
+                        {getDomainLabel(plo.domain)}
+                      </Tag>
+                    ) : (
+                      <Select
+                        value={plo.domain || 'KNOWLEDGE'}
+                        onChange={(val) => updatePloDomain(ploIdx, val)}
+                        options={DOMAIN_OPTIONS}
+                        className="w-full text-xs font-medium"
                       />
-                    </td>
+                    )}
+                  </div>
+
+                  <div className="flex-1 w-full">
+                    <TextArea
+                      id={`plo-input-${ploIdx}`}
+                      value={plo.content}
+                      disabled={readonly}
+                      onChange={(e) => updatePLO(ploIdx, e.target.value)}
+                      onBlur={handleBlur}
+                      placeholder="Nhập nội dung chuẩn đầu ra PLO..."
+                      autoSize={{ minRows: 2 }}
+                      className={`w-full rounded-md px-3 py-2 text-sm focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 ${
+                        errors[`plo-${ploIdx}`]
+                          ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                          : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                      }`}
+                    />
+                    {errors[`plo-${ploIdx}`] && (
+                      <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                        <AlertCircle size={13} className="shrink-0" />
+                        <span>{errors[`plo-${ploIdx}`]}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {!readonly && (
+                    <button
+                      type="button"
+                      onClick={() => removePLO(ploIdx)}
+                      title="Xóa PLO"
+                      className="w-8 h-8 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 flex items-center justify-center shrink-0 mt-1 transition-colors"
+                    >
+                      <DeleteOutlined className="text-xs" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Sub-block PI */}
+                <div className="ml-0 md:ml-16 bg-slate-50/60 p-4 rounded-lg border border-slate-200/80 space-y-3">
+                  <div className="text-xs font-semibold text-slate-700 pb-1 border-b border-slate-200/60">
+                    PI thuộc {getPloCode(ploIdx)} này:
+                  </div>
+
+                  <div className="space-y-3">
+                    {plo.pis.map((pi, piIdx) => (
+                      <div key={piIdx} className="flex gap-2.5 items-start">
+                        <div className="w-16 pt-2 shrink-0">
+                          <span className="text-xs font-semibold text-slate-700 font-mono">
+                            {getPiCode(ploIdx, piIdx)}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <TextArea
+                            id={`pi-input-${ploIdx}-${piIdx}`}
+                            value={pi.content}
+                            disabled={readonly}
+                            onChange={(e) => updatePI(ploIdx, piIdx, e.target.value)}
+                            onBlur={handleBlur}
+                            placeholder="Nội dung chỉ số thực hiện (PI)..."
+                            autoSize={{ minRows: 2 }}
+                            className={`w-full rounded-md px-3 py-1.5 text-xs focus:outline-none transition-all disabled:bg-slate-50 disabled:text-slate-900 ${
+                              errors[`pi-${ploIdx}-${piIdx}`]
+                                ? 'border-red-500 bg-red-50/20 ring-2 ring-red-400/20'
+                                : 'border-slate-200 bg-white focus:ring-2 focus:ring-brand-500'
+                            }`}
+                          />
+                          {errors[`pi-${ploIdx}-${piIdx}`] && (
+                            <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-1">
+                              <AlertCircle size={13} className="shrink-0" />
+                              <span>{errors[`pi-${ploIdx}-${piIdx}`]}</span>
+                            </div>
+                          )}
+                        </div>
+                        {!readonly && (
+                          <button
+                            type="button"
+                            onClick={() => removePI(ploIdx, piIdx)}
+                            title="Xóa PI"
+                            className="w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 flex items-center justify-center shrink-0 mt-1 transition-colors"
+                          >
+                            <DeleteOutlined className="text-xs" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {!readonly && (
+                      <div className="pt-1">
+                        <Button
+                          type="default"
+                          size="small"
+                          icon={<PlusOutlined className="text-xs" />}
+                          onClick={() => addPI(ploIdx)}
+                          className="text-xs border-dashed border-emerald-400 text-emerald-700 hover:text-emerald-800 hover:border-emerald-600 rounded bg-emerald-50/30"
+                        >
+                          + Thêm PI
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {!readonly && (
+              <Button
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={addPLO}
+                className="w-full text-brand-600 hover:text-brand-700 font-semibold border-brand-300 hover:border-brand-500 h-10 rounded-lg"
+              >
+                + Thêm chuẩn đầu ra PLO
+              </Button>
+            )}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: '3',
+      label: (
+        <span className="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <span className="text-amber-500">✦</span> Ma trận tích hợp mục tiêu &amp; chuẩn đầu ra (PO ↔ PI)
+        </span>
+      ),
+      children: (
+        <div className="space-y-3 pt-2">
+          <div className="text-xs text-slate-500">
+            Đánh dấu tích để xác định mối quan hệ tương quan giữa các Mục tiêu đào tạo (PO) và Chỉ số đo lường (PI).
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-xs border-collapse">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th rowSpan={2} className="border border-slate-200 p-2 text-left font-semibold text-slate-600">Mục tiêu (PO)</th>
+                  {state.plos.map((plo, ploIdx) => (
+                    <th key={ploIdx} colSpan={plo.pis.length} className="border border-slate-200 p-2 text-center font-semibold text-slate-700 border-l">
+                      {getPloCode(ploIdx)}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {state.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => (
+                    <th key={`${ploIdx}-${piIdx}`} className="border border-slate-200 p-1.5 text-center font-medium text-slate-500 border-l">
+                      {getPiCode(ploIdx, piIdx)}
+                    </th>
                   )))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {state.pos.map((po, poIdx) => (
+                  <tr key={poIdx} className="hover:bg-slate-50">
+                    <td className="border border-slate-200 p-2 font-medium text-slate-700 font-mono">{getPoCode(poIdx)}</td>
+                    {state.plos.map((plo, ploIdx) => plo.pis.map((_, piIdx) => (
+                      <td key={`${poIdx}-${ploIdx}-${piIdx}`} className="border border-slate-200 p-2 text-center border-l">
+                        <Checkbox
+                          checked={!!state.matrix?.[poIdx]?.[ploIdx]?.[piIdx]}
+                          disabled={readonly}
+                          onChange={() => toggleMatrix(poIdx, ploIdx, piIdx)}
+                        />
+                      </td>
+                    )))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </section>
+      )
+    }
+  ];
+
+  return (
+    <div className="w-full pb-8">
+      <Collapse
+        activeKey={activeAccordionKeys}
+        onChange={(keys) => setActiveAccordionKeys(Array.isArray(keys) ? keys as string[] : [keys as string])}
+        items={collapseItems}
+        bordered={false}
+        className="bg-transparent space-y-4"
+      />
 
       <style jsx global>{`
+        .ant-collapse > .ant-collapse-item {
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 12px !important;
+          background: #ffffff !important;
+          margin-bottom: 16px !important;
+          overflow: hidden;
+        }
+        .ant-collapse-header {
+          background-color: #f8fafc !important;
+          padding: 12px 16px !important;
+          border-bottom: 1px solid #f1f5f9;
+        }
+        .ant-collapse-content-box {
+          padding: 16px 20px !important;
+        }
         .ant-checkbox-disabled .ant-checkbox-inner {
           background-color: #f8fafc !important;
           border-color: #cbd5e1 !important;

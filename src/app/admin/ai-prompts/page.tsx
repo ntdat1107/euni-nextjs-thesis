@@ -44,7 +44,6 @@ import {
 } from 'lucide-react';
 import { useAiPromptTemplates } from '@/hooks/useAiPromptTemplates';
 import { AiPromptTemplate } from '@/services/aiPromptTemplateService';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 import { cn } from '@/lib/utils';
 
 const { Title, Text } = Typography;
@@ -278,10 +277,6 @@ function AiPromptManagementContent() {
     [toggleActive]
   );
 
-  if (isLoading) {
-    return <TableSkeleton rows={8} columns={4} />;
-  }
-
   return (
     <div className="flex flex-col gap-6">
       {/* Page Header */}
@@ -414,6 +409,7 @@ function AiPromptManagementContent() {
       {viewMode === 'TABLE' && (
         <Card className="card-premium overflow-hidden" styles={{ body: { padding: 0 } }}>
           <Table
+            loading={isLoading}
             dataSource={filteredTemplates}
             columns={columns}
             rowKey="id"

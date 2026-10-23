@@ -10,7 +10,7 @@ export interface PermissionState {
 }
 
 export function isPathAllowed(pathname: string, userRoles: string[]): boolean {
-  if (!pathname || pathname === '/' || pathname === '/profile' || pathname === '/change-password') {
+  if (!pathname || pathname === '/' || pathname === '/profile' || pathname === '/change-password' || pathname === '/ai-settings') {
     return true;
   }
 

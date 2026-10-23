@@ -37,7 +37,6 @@ import {
 import { useUsers, User } from '@/hooks/useUsers';
 import { useRBAC } from '@/hooks/useRBAC';
 import { useFaculties } from '@/hooks/useFaculties';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 
 const { Title, Text } = Typography;
 
@@ -263,10 +262,6 @@ function UserManagementContent() {
     },
   ], [faculties, roles, facultyMap, roleMap]);
 
-  if (isLoading) {
-    return <TableSkeleton rows={10} columns={5} />;
-  }
-
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -343,6 +338,7 @@ function UserManagementContent() {
             <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg" />
           </div>
           <Table 
+            loading={isLoading}
             dataSource={filteredUsers} 
             columns={columns} 
             rowKey="id"

@@ -27,7 +27,6 @@ import {
   Building2
 } from 'lucide-react';
 import { useFaculties, Faculty } from '@/hooks/useFaculties';
-import TableSkeleton from '@/components/ui/TableSkeleton';
 
 const { Title, Text } = Typography;
 
@@ -140,10 +139,6 @@ function FacultyManagementContent() {
     },
   ];
 
-  if (isLoading) {
-    return <TableSkeleton rows={10} columns={3} />;
-  }
-
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -189,6 +184,7 @@ function FacultyManagementContent() {
           <Button icon={<RefreshCw className="w-4 h-4" />} type="text" className="rounded-lg cursor-pointer" />
         </div>
         <Table
+          loading={isLoading}
           dataSource={filteredFaculties}
           columns={columns}
           rowKey="id"

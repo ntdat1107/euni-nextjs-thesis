@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { cn, isTokenExpired } from '@/lib/utils';
 import { Alert, Button, App } from 'antd';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
 import MainLoading from '../ui/MainLoading';
+import PageSkeleton from '../ui/PageSkeleton';
 import { ShieldAlert } from 'lucide-react';
 import { isPathAllowed } from '@/lib/permissions';
 
@@ -49,11 +49,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('euni_access_token');
+      const refreshToken = localStorage.getItem('euni_refresh_token');
+      const userData = localStorage.getItem('euni_user');
+      return Boolean(userData && (token || refreshToken));
+    }
+    return null;
+  });
   const [isNavigating, setIsNavigating] = useState(false);
 
   // --- Instant Navigation Feedback ---
-  useEffect(() => {
+  React.useEffect(() => {
     setIsNavigating(false);
   }, [pathname]);
 
@@ -64,6 +72,43 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setTimeout(() => setIsNavigating(false), 5000);
     }
   }, [pathname]);
+
+  // Global click interceptor to catch ANY internal navigation (Breadcrumbs, Buttons, Cards)
+  React.useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a');
+      if (!anchor) return;
+
+      const href = anchor.getAttribute('href');
+      if (
+        !href ||
+        href.startsWith('#') ||
+        href.startsWith('mailto:') ||
+        href.startsWith('tel:') ||
+        anchor.target === '_blank' ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.shiftKey
+      ) {
+        return;
+      }
+
+      try {
+        const targetUrl = new URL(anchor.href, window.location.origin);
+        if (
+          targetUrl.origin === window.location.origin &&
+          targetUrl.pathname !== window.location.pathname
+        ) {
+          setIsNavigating(true);
+        }
+      } catch (err) {}
+    };
+
+    document.addEventListener('click', handleLinkClick, { capture: true });
+    return () => {
+      document.removeEventListener('click', handleLinkClick, { capture: true });
+    };
+  }, []);
 
   const onNavigateEnd = useCallback(() => {
     setIsNavigating(false);
@@ -138,8 +183,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-slate-50 flex">
       {/* Instant Progress Bar */}
       {isNavigating && (
-        <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-brand-100 overflow-hidden">
-          <div className="h-full bg-brand-600 animate-progress-fast shadow-[0_0_10px_rgba(37,99,235,0.5)]" />
+        <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-blue-100 overflow-hidden pointer-events-none">
+          <div className="h-full bg-blue-600 animate-progress-fast shadow-[0_0_12px_rgba(37,99,235,0.8)]" />
         </div>
       )}
 
@@ -168,7 +213,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="w-full h-full">
             {isAuthenticated === true ? (
               hasPagePermission ? (
-                children
+                <React.Suspense fallback={<PageSkeleton />}>
+                  {children}
+                </React.Suspense>
               ) : (
                 <div className="h-[65vh] w-full flex items-center justify-center p-6">
                   <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-slate-200 shadow-xl text-center flex flex-col items-center">
