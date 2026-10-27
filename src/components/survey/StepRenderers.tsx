@@ -43,14 +43,41 @@ export function S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer({ step, campaign, r
 }
 
 // --- S5_CLO Renderer ---
-export function S5_CLO_Renderer({ step, readonly, data, onChange }: { step: any; readonly: boolean; data?: any; onChange?: (data: any) => void }) {
-  return <S5CLORenderer data={data} readonly={readonly} onChange={onChange} />;
-}
+export const S5_CLO_Renderer = forwardRef<any, {
+  step?: any;
+  campaign?: any;
+  canEditRole?: boolean;
+  canApproveRole?: boolean;
+  onRefreshStep?: () => void;
+  readonly: boolean;
+  data?: any;
+  onChange?: (data: any) => void;
+}>(
+  ({ step, campaign, canEditRole, canApproveRole, onRefreshStep, readonly, data, onChange }, ref) => {
+    return (
+      <S5CLORenderer
+        ref={ref}
+        step={step}
+        campaign={campaign}
+        canEditRole={canEditRole}
+        canApproveRole={canApproveRole}
+        onRefreshStep={onRefreshStep}
+        data={data}
+        readonly={readonly}
+        onChange={onChange}
+      />
+    );
+  }
+);
+S5_CLO_Renderer.displayName = 'S5_CLO_Renderer';
 
 // --- S6_MATRIX Renderer ---
-export function S6_MATRIX_Renderer({ step, readonly, data, onChange }: { step: any; readonly: boolean; data?: any; onChange?: (data: any) => void }) {
-  return <S6MatrixRenderer data={data} readonly={readonly} onChange={onChange} />;
-}
+export const S6_MATRIX_Renderer = forwardRef<any, { step?: any; campaign?: any; readonly: boolean; data?: any; onChange?: (data: any) => void }>(
+  ({ step, campaign, readonly, data, onChange }, ref) => {
+    return <S6MatrixRenderer ref={ref} step={step} campaign={campaign} data={data} readonly={readonly} onChange={onChange} />;
+  }
+);
+S6_MATRIX_Renderer.displayName = 'S6_MATRIX_Renderer';
 
 // Mapping object for easy lookup in the main page
 export const StepRenderers: Record<string, React.FC<any>> = {

@@ -36,7 +36,13 @@ export interface SurveyCampaignCourseMeta {
   courseId: number;
   courseCode: string;
   courseName: string;
+  courseNameEn?: string;
   credits: number;
+  theoryCredits?: number;
+  practiceCredits?: number;
+  selfStudyHours?: number;
+  semester?: number;
+  departmentName?: string;
   status: string;
 }
 
@@ -47,8 +53,15 @@ export interface SurveyCampaignCourseDetail {
   courseId: number;
   courseCode: string;
   courseName: string;
+  courseNameEn?: string;
   credits: number;
+  theoryCredits?: number;
+  practiceCredits?: number;
+  selfStudyHours?: number;
+  semester?: number;
+  departmentName?: string;
   status: string;
+  reviewNote?: string;
   syllabusData?: string;
   createdAt?: string;
   updatedAt?: string;

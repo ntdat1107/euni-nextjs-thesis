@@ -579,6 +579,23 @@ export default function RichtextEditor({
         .ck-editor-wrapper {
           border-color: #e2e8f0;
           background: #fff;
+          --ck-color-engine-placeholder-text: #94a3b8 !important;
+        }
+
+        /* CKEditor Placeholder Styling */
+        .ck-editor-wrapper .ck.ck-editor__editable.ck-placeholder::before,
+        .ck-editor-wrapper .ck.ck-editor__editable > .ck-placeholder::before,
+        .ck-editor-wrapper .ck.ck-placeholder::before,
+        .ck-editor-wrapper .ck .ck-placeholder::before,
+        .ck-editor-wrapper .ck-content .ck-placeholder::before,
+        .ck-editor-wrapper .ck-content.ck-placeholder::before,
+        .ck-editor-wrapper :is(.ck.ck-placeholder, .ck .ck-placeholder):before,
+        .ck-editor-wrapper :is(.ck.ck-placeholder, .ck .ck-placeholder)::before {
+          color: #94a3b8 !important;
+          -webkit-text-fill-color: #94a3b8 !important;
+          font-style: italic !important;
+          font-weight: 400 !important;
+          opacity: 0.85 !important;
         }
         .ck-editor-wrapper.is-focused {
           border-color: #3b82f6;

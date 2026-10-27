@@ -1,160 +1,299 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Table, Select, Typography, Card, Tag, Tooltip } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
-
-const { Text, Title } = Typography;
-
-interface S6MatrixData {
-  mapping: Record<string, Record<string, string>>; // ploCode -> { cloCode: level }
-}
+import React, { useState, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+import { Spin, message } from 'antd';
+import { programService } from '@/services/programService';
+import { surveyCampaignService } from '@/services/surveyCampaignService';
+import { S6CourseRow, S6PloGroup, S6RendererRef } from './s6/types';
+import { S6KpiStrip } from './s6/S6KpiStrip';
+import { S6MatrixTable } from './s6/S6MatrixTable';
 
 interface S6MatrixRendererProps {
-  data?: S6MatrixData;
+  step?: any;
+  campaign?: any;
   readonly?: boolean;
-  onChange?: (data: S6MatrixData) => void;
-  // Metadata inherited from S2 and S5
-  plos?: { id: string; content: string }[];
-  clos?: { id: string; content: string }[];
+  data?: any;
+  onChange?: (data: any) => void;
 }
 
-export const S6MatrixRenderer: React.FC<S6MatrixRendererProps> = ({
-  data,
+export const S6MatrixRenderer = forwardRef<S6RendererRef, S6MatrixRendererProps>(({
+  step,
+  campaign: propCampaign,
   readonly = false,
+  data,
   onChange,
-  plos = [
-    { id: 'PLO1', content: 'Kỹ năng lập trình' },
-    { id: 'PLO2', content: 'Tư duy logic' },
-    { id: 'PLO3', content: 'Làm việc nhóm' },
-  ],
-  clos = [
-    { id: 'CLO1', content: 'Viết code C++ sạch' },
-    { id: 'CLO2', content: 'Giải quyết thuật toán' },
-    { id: 'CLO3', content: 'Sử dụng Git' },
-    { id: 'CLO4', content: 'Thuyết trình kỹ thuật' },
-  ],
-}) => {
-  const [state, setState] = useState<S6MatrixData>({
-    mapping: data?.mapping || {},
-  });
+}, ref) => {
+  const params = useParams();
+  const campaignId = (params?.id as string) || propCampaign?.id;
 
+  const [loading, setLoading] = useState(false);
+  const [isDeriving, setIsDeriving] = useState(false);
+  const [programId, setProgramId] = useState<number | null>(null);
+  const [rows, setRows] = useState<S6CourseRow[]>([]);
+  const [ploGroups, setPloGroups] = useState<S6PloGroup[]>([]);
+  const [uncoveredPiCodes, setUncoveredPiCodes] = useState<string[]>([]);
+
+  // Load Program ID & OBE Matrix
   useEffect(() => {
-    if (data && Object.keys(data).length > 0) {
-      setState({
-        mapping: data.mapping || {},
+    if (!campaignId) return;
+    const init = async () => {
+      try {
+        setLoading(true);
+        const camp = propCampaign || (await surveyCampaignService.getById(campaignId));
+        const pId = camp?.programId || camp?.program?.id;
+        if (!pId) return;
+        setProgramId(pId);
+
+        const obeData = await programService.getObeMatrix(pId);
+
+        // 1. Locate Step 2 (S2_PLO) in current campaign to extract configured PLOs & PIs
+        const s2Step = (camp?.steps || []).find((s: any) => {
+          let sc = '';
+          try {
+            const parsedConfig = typeof s.configuration === 'string' ? JSON.parse(s.configuration) : s.configuration;
+            sc = parsedConfig?.screenCode || parsedConfig?.stepCode || '';
+          } catch (e) {}
+          return sc === 'S2_PLO' || s.stepCode === 'S2_PLO' || s.stepIndex === 2;
+        });
+
+        let s2Plos: any[] | null = null;
+        if (s2Step?.resultData) {
+          try {
+            const parsed = typeof s2Step.resultData === 'string' ? JSON.parse(s2Step.resultData) : s2Step.resultData;
+            const candidate = parsed?.plos || parsed?.ploBuilder?.plos;
+            if (Array.isArray(candidate) && candidate.length > 0) {
+              s2Plos = candidate;
+            }
+          } catch (ignored) {}
+        }
+
+        let groups: S6PloGroup[] = [];
+
+        if (s2Plos && s2Plos.length > 0) {
+          // Use EXACT PLO and PI list configured in Step 2 of this campaign
+          groups = s2Plos.map((plo: any, ploIdx: number) => {
+            const ploCode = plo.code || `PLO${ploIdx + 1}`;
+            const ploName = plo.content || plo.name || ploCode;
+            const domain = plo.domain || 'KNOWLEDGE';
+
+            // Match with DB PLO if available to preserve relational ID
+            const dbPlo = (obeData.learningOutcomes || []).find(
+              (p: any) => p.code === ploCode || p.id === plo.id
+            );
+            const ploId = dbPlo?.id || plo.id || (ploIdx + 1);
+
+            const rawPis = Array.isArray(plo.pis) ? plo.pis : [];
+            const indicators = rawPis.map((pi: any, piIdx: number) => {
+              const piCode = pi.code || `PI${ploIdx + 1}.${piIdx + 1}`;
+              const dbPi = (dbPlo?.indicators || []).find(
+                (dpi: any) => dpi.code === piCode || dpi.id === pi.id
+              );
+              const piId = dbPi?.id || pi.id || piCode;
+
+              return {
+                piId,
+                piCode,
+                content: pi.content || dbPi?.content || '',
+                bloomLevel: pi.bloomLevel || dbPi?.bloomLevel || 'APPLY',
+              };
+            });
+
+            return {
+              ploId,
+              ploCode,
+              ploName,
+              domain,
+              indicators,
+            };
+          });
+        } else {
+          // Fallback to base DB learning outcomes
+          groups = (obeData.learningOutcomes || []).map((plo: any) => ({
+            ploId: plo.id,
+            ploCode: plo.code,
+            ploName: plo.name || plo.content || plo.code,
+            domain: plo.domain || 'KNOWLEDGE',
+            indicators: (plo.indicators || []).map((pi: any) => ({
+              piId: pi.id,
+              piCode: pi.code,
+              content: pi.content || '',
+              bloomLevel: pi.bloomLevel || 'APPLY',
+            })),
+          }));
+        }
+
+        setPloGroups(groups);
+        setUncoveredPiCodes(obeData.uncoveredPiCodes || []);
+
+        // Initial rows from backend
+        const stepMapping = data?.mapping || (step?.resultData ? (typeof step.resultData === 'string' ? JSON.parse(step.resultData)?.mapping : step.resultData?.mapping) : null);
+
+        const courseRows: S6CourseRow[] = (obeData.courseMatrixRows || []).map((r: any) => {
+          const cellsMap: Record<string | number, number> = {};
+          (r.cells || []).forEach((c: any) => {
+            cellsMap[c.piId] = c.level;
+          });
+
+          // Also map by piCode for indicators that have numeric piId matching DB
+          groups.forEach(g => {
+            g.indicators.forEach(ind => {
+              if (typeof ind.piId === 'number' && cellsMap[ind.piId]) {
+                cellsMap[ind.piCode] = cellsMap[ind.piId];
+              }
+            });
+          });
+
+          // Override from step resultData if available
+          if (stepMapping && stepMapping[r.programCourseId]) {
+            Object.assign(cellsMap, stepMapping[r.programCourseId]);
+          }
+
+          return {
+            programCourseId: r.programCourseId,
+            courseId: r.courseId,
+            courseCode: r.courseCode,
+            courseName: r.courseName,
+            semester: r.semester,
+            credits: r.credits,
+            structureName: r.structureName,
+            cells: cellsMap,
+          };
+        });
+        setRows(courseRows);
+      } catch (err) {
+        console.error('Failed to load OBE matrix for Step 6', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [campaignId, propCampaign, data, step]);
+
+  const handleCellChange = useCallback((programCourseId: number, piId: any, level: number) => {
+    setRows(prevRows => {
+      const updated = prevRows.map(r => {
+        if (r.programCourseId !== programCourseId) return r;
+        const newCells = { ...r.cells, [piId]: level };
+        return { ...r, cells: newCells };
       });
-    }
-  }, [data]);
 
-  const handleStateChange = (newState: S6MatrixData) => {
-    setState(newState);
-    if (onChange) {
-      onChange(newState);
+      if (onChange) {
+        const mapping: Record<string, Record<string, number>> = {};
+        updated.forEach(r => {
+          mapping[r.programCourseId] = r.cells;
+        });
+        onChange({ mapping });
+      }
+      return updated;
+    });
+  }, [onChange]);
+
+  const handleAutoDerive = async () => {
+    if (!programId) return;
+    try {
+      setIsDeriving(true);
+      const res = await programService.autoDeriveMatrix(programId);
+      message.success('Đã tính toán ma trận tự động từ Đề cương học phần (CLO)!');
+
+      const updatedRows: S6CourseRow[] = (res.courseMatrixRows || []).map((r: any) => {
+        const cellsMap: Record<string | number, number> = {};
+        (r.cells || []).forEach((c: any) => {
+          cellsMap[c.piId] = c.level;
+        });
+        return {
+          programCourseId: r.programCourseId,
+          courseId: r.courseId,
+          courseCode: r.courseCode,
+          courseName: r.courseName,
+          semester: r.semester,
+          credits: r.credits,
+          structureName: r.structureName,
+          cells: cellsMap,
+        };
+      });
+      setRows(updatedRows);
+      setUncoveredPiCodes(res.uncoveredPiCodes || []);
+
+      if (onChange) {
+        const mapping: Record<string, Record<string, number>> = {};
+        updatedRows.forEach(r => {
+          mapping[r.programCourseId] = r.cells;
+        });
+        onChange({ mapping });
+      }
+    } catch (e) {
+      message.error('Lỗi khi tính toán tự động ma trận');
+    } finally {
+      setIsDeriving(false);
     }
   };
 
-  const updateMapping = (ploId: string, cloId: string, level: string) => {
-    if (readonly) return;
-    const newMapping = { ...state.mapping };
-    if (!newMapping[ploId]) newMapping[ploId] = {};
-    newMapping[ploId][cloId] = level;
-    handleStateChange({ ...state, mapping: newMapping });
-  };
-
-  // Build columns for the table: Rows are PLOs, Columns are CLOs
-  const columns = [
-    {
-      title: 'PLO \\ CLO',
-      dataIndex: 'id',
-      key: 'plo_header',
-      fixed: 'left' as const,
-      width: 150,
-      render: (text: string, record: any) => (
-        <Tooltip title={record.content} placement="right">
-          <div className="flex items-center gap-2 cursor-help">
-            <Text strong className="text-brand-600">{text}</Text>
-            <InfoCircleOutlined className="text-slate-400 text-xs" />
-          </div>
-        </Tooltip>
-      ),
+  useImperativeHandle(ref, () => ({
+    validate: () => {
+      const allPis = ploGroups.flatMap(p => p.indicators);
+      const uncovered = allPis.filter(pi => !rows.some(r => (r.cells[pi.piId] || r.cells[pi.piCode] || 0) > 0));
+      if (uncovered.length > 0) {
+        message.error(`Ma trận chưa hoàn thành: Còn ${uncovered.length} chuẩn đầu ra PI chưa có môn học nào đảm nhiệm (vd: ${uncovered[0].piCode})`);
+        return false;
+      }
+      return true;
     },
-    ...clos?.map(clo => ({
-      title: (
-        <Tooltip title={clo.content}>
-          <div className="text-center cursor-help">
-            <Tag color="blue" className="mr-0">{clo.id}</Tag>
-          </div>
-        </Tooltip>
-      ),
-      dataIndex: clo.id,
-      key: clo.id,
-      align: 'center' as const,
-      width: 100,
-      render: (_: any, record: any) => (
-        <Select
-          value={state.mapping[record.id]?.[clo.id] || ''}
-          disabled={readonly}
-          className="w-full min-w-[70px]"
-          variant="borderless"
-          onChange={(val) => updateMapping(record.id, clo.id, val)}
-          options={[
-            { label: '—', value: '' },
-            { label: 'L: Thấp', value: '1' },
-            { label: 'M: TB', value: '2' },
-            { label: 'H: Cao', value: '3' },
-          ]}
-        />
-      ),
-    })),
-  ];
+    saveMatrix: async () => {
+      if (!programId) return true;
+      try {
+        const batchPayload = rows.map(r => ({
+          programCourseId: r.programCourseId,
+          mappings: Object.entries(r.cells)
+            .filter(([piKey, level]) => Number(level) > 0 && !isNaN(Number(piKey)))
+            .map(([piId, level]) => ({
+              piId: Number(piId),
+              level: Number(level),
+            })),
+        }));
+        await programService.batchUpdateCoursePiMatrix(programId, batchPayload);
+        return true;
+      } catch (e) {
+        message.error('Lỗi khi lưu ma trận');
+        return false;
+      }
+    },
+    getData: () => {
+      const mapping: Record<string, Record<string, number>> = {};
+      rows.forEach(r => {
+        mapping[r.programCourseId] = r.cells;
+      });
+      return { mapping };
+    },
+  }));
+
+  if (loading) {
+    return (
+      <div className="p-16 text-center">
+        <Spin tip="Đang tải dữ liệu ma trận chuẩn đầu ra..." />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <Card className="shadow-sm border-slate-200">
-        <div className="flex justify-between items-center mb-6">
-          <Title level={4} className="!mb-0">Ma trận liên kết PLO - CLO</Title>
-          <div className="flex gap-4">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-brand-50 border border-brand-200 rounded"></span>
-              <Text className="text-xs" type="secondary">L: Low</Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-brand-100 border border-brand-300 rounded"></span>
-              <Text className="text-xs" type="secondary">M: Medium</Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-brand-200 border border-brand-400 rounded"></span>
-              <Text className="text-xs" type="secondary">H: High</Text>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-4">
+      <S6KpiStrip
+        rows={rows}
+        ploGroups={ploGroups}
+        readonly={readonly}
+        onAutoDerive={handleAutoDerive}
+        isDeriving={isDeriving}
+      />
 
-        <Table 
-          dataSource={plos || []} 
-          columns={columns} 
-          pagination={false}
-          rowKey="id"
-          bordered
-          scroll={{ x: 'max-content' }}
-          className="matrix-table"
-        />
-      </Card>
-
-      <style jsx global>{`
-        .matrix-table .ant-table-thead > tr > th {
-          background-color: #f8fafc;
-          padding: 12px 8px !important;
-        }
-        .matrix-table .ant-table-cell {
-          padding: 4px 8px !important;
-        }
-        .matrix-table .ant-select-selector {
-          text-align: center;
-        }
-      `}</style>
+      <S6MatrixTable
+        rows={rows}
+        ploGroups={ploGroups}
+        readonly={readonly}
+        onCellChange={handleCellChange}
+      />
     </div>
   );
-};
+});
 
+S6MatrixRenderer.displayName = 'S6MatrixRenderer';
 export default S6MatrixRenderer;

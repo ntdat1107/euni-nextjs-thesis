@@ -63,6 +63,24 @@
     -webkit-text-fill-color: #94a3b8 !important;
     font-style: italic;
   }
+
+  /* CKEditor placeholder styling */
+  :root {
+    --ck-color-engine-placeholder-text: #94a3b8;
+  }
+
+  .ck.ck-editor__editable.ck-placeholder::before,
+  .ck.ck-editor__editable > .ck-placeholder::before,
+  .ck.ck-placeholder::before,
+  .ck .ck-placeholder::before,
+  .ck-content .ck-placeholder::before,
+  .ck-content.ck-placeholder::before {
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
+    font-style: italic !important;
+    font-weight: 400 !important;
+    opacity: 0.85 !important;
+  }
 }
 
 @layer components {

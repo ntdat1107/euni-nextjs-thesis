@@ -80,5 +80,13 @@ export const programService = {
 
   updateCoursePiMatrix: async (id: number | string, payload: { programCourseId: number; mappings: { piId: number; level: number | null }[] }): Promise<void> => {
     return api.put(`/programs/${id}/obe/course-matrix`, payload);
+  },
+
+  batchUpdateCoursePiMatrix: async (id: number | string, payload: { programCourseId: number; mappings: { piId: number; level: number | null }[] }[]): Promise<void> => {
+    return api.put(`/programs/${id}/obe/course-matrix/batch`, payload);
+  },
+
+  autoDeriveMatrix: async (id: number | string): Promise<ProgramObeMatrixData> => {
+    return api.post(`/programs/${id}/obe/auto-derive`);
   }
 };

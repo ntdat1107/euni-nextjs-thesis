@@ -56,6 +56,8 @@ export default function CurriculumDevelopmentStepPage() {
   const s1HasVersion = Boolean(s1Form?.id && s1Form?.status);
 
   const s2Ref = useRef<S2PLORef | null>(null);
+  const s5Ref = useRef<any>(null);
+  const s6Ref = useRef<any>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -224,6 +226,21 @@ export default function CurriculumDevelopmentStepPage() {
         }
       }
 
+      if (screenCode === 'S6_MATRIX' && s6Ref.current) {
+        try {
+          const success = await s6Ref.current.saveMatrix();
+          if (!success) {
+            setIsSaving(false);
+            return;
+          }
+          if (typeof s6Ref.current.getData === 'function') {
+            dataToSave = s6Ref.current.getData();
+          }
+        } catch (err) {
+          console.error('[S6Matrix] Error saving matrix:', err);
+        }
+      }
+
       await surveyCampaignService.saveStepData(
         id as string,
         currentStepDbId as string,
@@ -275,42 +292,6 @@ export default function CurriculumDevelopmentStepPage() {
       message.error(error?.message || 'Lỗi khi xử lý phê duyệt');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const renderContent = () => {
-    const screenCode = step?.configuration?.screenCode;
-
-    switch (screenCode) {
-      case 'S1_KHAO_SAT_NHU_CAU':
-        return (
-          <S1_KHAO_SAT_NHU_CAU_Renderer
-            ref={s1Ref}
-            step={step}
-            readonly={!isEdit}
-            data={formData}
-            onChange={setFormData}
-            onRefreshStep={fetchData}
-            onFormLoaded={handleS1FormLoaded}
-          />
-        );
-      case 'S2_PLO':
-        return <S2_PLO_Renderer ref={s2Ref} step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
-      case 'S3_XacDinhCauTruc_KhoiLuongKienThuc':
-      case 'S3_STRUCTURE':
-        return <S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
-      case 'S5_CLO':
-        return <S5_CLO_Renderer step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
-      case 'S6_MATRIX':
-        return <S6_MATRIX_Renderer step={step} readonly={!isEdit} data={formData} onChange={setFormData} />;
-      default:
-        return (
-          <div className="py-24 text-center bg-white rounded-3xl border border-dashed border-slate-200">
-            <FileText className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-            <Title level={4} className="text-slate-400">Giao diện đang được phát triển</Title>
-            <Text className="text-slate-400">Mã màn hình: {screenCode || 'N/A'}</Text>
-          </div>
-        );
     }
   };
 
@@ -372,6 +353,12 @@ export default function CurriculumDevelopmentStepPage() {
         message.error('Vui lòng điền đầy đủ các thông tin bắt buộc trước khi nộp duyệt');
         return;
       }
+    } else if (screenCode === 'S5_CLO' && s5Ref.current) {
+      const isValid = s5Ref.current.validate();
+      if (!isValid) return;
+    } else if (screenCode === 'S6_MATRIX' && s6Ref.current) {
+      const isValid = s6Ref.current.validate();
+      if (!isValid) return;
     }
     Modal.confirm({
       title: `Xác nhận nộp phê duyệt: ${step?.stepName}`,
@@ -390,6 +377,54 @@ export default function CurriculumDevelopmentStepPage() {
     resolvedStatus !== 'UNDER_REVIEW' &&
     resolvedStatus !== 'COMPLETED' &&
     resolvedStatus !== 'LOCKED';
+
+  const renderContent = () => {
+    const screenCode = step?.configuration?.screenCode;
+
+    switch (screenCode) {
+      case 'S1_KHAO_SAT_NHU_CAU':
+        return (
+          <S1_KHAO_SAT_NHU_CAU_Renderer
+            ref={s1Ref}
+            step={step}
+            readonly={!isEdit}
+            data={formData}
+            onChange={setFormData}
+            onRefreshStep={fetchData}
+            onFormLoaded={handleS1FormLoaded}
+          />
+        );
+      case 'S2_PLO':
+        return <S2_PLO_Renderer ref={s2Ref} step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
+      case 'S3_XacDinhCauTruc_KhoiLuongKienThuc':
+      case 'S3_STRUCTURE':
+        return <S3_XacDinhCauTruc_KhoiLuongKienThuc_Renderer step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
+      case 'S5_CLO':
+        return (
+          <S5_CLO_Renderer
+            ref={s5Ref}
+            step={step}
+            campaign={campaign}
+            canEditRole={canEditRole}
+            canApproveRole={canApproveRole}
+            onRefreshStep={fetchData}
+            readonly={!canEditByStatus}
+            data={formData}
+            onChange={setFormData}
+          />
+        );
+      case 'S6_MATRIX':
+        return <S6_MATRIX_Renderer ref={s6Ref} step={step} campaign={campaign} readonly={!isEdit} data={formData} onChange={setFormData} />;
+      default:
+        return (
+          <div className="py-24 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+            <FileText className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+            <Title level={4} className="text-slate-400">Giao diện đang được phát triển</Title>
+            <Text className="text-slate-400">Mã màn hình: {screenCode || 'N/A'}</Text>
+          </div>
+        );
+    }
+  };
 
   return (
     <AppShell>
@@ -700,8 +735,131 @@ export default function CurriculumDevelopmentStepPage() {
                     </Space>
                   )}
                   </>
+                ) : step?.configuration?.screenCode === 'S5_CLO' ? (
+                  /* 2. SPECIALIZED WORKFLOW FOR S5_CLO (Per-Course Lifecycle & Batch Step Acceptance) */
+                  <Space size="small">
+                    {/* B1. Step Completed: Approver can reopen step */}
+                    {resolvedStatus === 'COMPLETED' ? (
+                      canApproveRole && (
+                        <Button
+                          icon={<RotateCcw size={14} />}
+                          onClick={() => {
+                            Modal.confirm({
+                              title: `Mở lại bước: ${step?.stepName}`,
+                              content: 'Mở lại bước này có thể ảnh hưởng đến dữ liệu của các bước kế tiếp đã phụ thuộc vào bước này. Bạn có chắc chắn muốn mở lại?',
+                              okText: 'Mở lại bước',
+                              cancelText: 'Hủy',
+                              centered: true,
+                              onOk: () => handleReview('IN_PROGRESS')
+                            });
+                          }}
+                          loading={isSaving}
+                          className="rounded-lg text-xs font-medium h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                        >
+                          Mở lại bước
+                        </Button>
+                      )
+                    ) : resolvedStatus === 'UNDER_REVIEW' ? (
+                      /* B2. Under Review */
+                      <>
+                        {canEditRole && (
+                          <Button
+                            icon={<RotateCcw size={14} />}
+                            onClick={() => {
+                              Modal.confirm({
+                                title: 'Thu hồi yêu cầu phê duyệt Bước 5',
+                                content: 'Bạn có chắc chắn muốn thu hồi yêu cầu nghiệm thu bước này? Bước sẽ trở về trạng thái Đang thực hiện.',
+                                okText: 'Xác nhận thu hồi',
+                                cancelText: 'Hủy bỏ',
+                                centered: true,
+                                onOk: () => handleReview('IN_PROGRESS')
+                              });
+                            }}
+                            disabled={isSaving}
+                            className="rounded-lg text-xs font-semibold h-9 px-4 border-slate-300 text-slate-700 hover:text-blue-600 hover:border-blue-500"
+                          >
+                            Thu hồi nghiệm thu bước
+                          </Button>
+                        )}
+                        {canApproveRole && (
+                          <>
+                            <Button
+                              danger
+                              icon={<AlertTriangle size={14} />}
+                              onClick={() => setIsRejectModalOpen(true)}
+                              disabled={isSaving}
+                              className="rounded-lg text-xs font-semibold h-9 px-4 border-rose-200 text-rose-600 hover:bg-rose-50"
+                            >
+                              Yêu cầu chỉnh sửa
+                            </Button>
+                            <Button
+                              type="primary"
+                              icon={<CheckCircle2 size={14} />}
+                              onClick={() => {
+                                Modal.confirm({
+                                  title: `Phê duyệt hoàn thành bước: ${step?.stepName}`,
+                                  content: 'Toàn bộ đề cương chi tiết học phần đã được thẩm định đạt yêu cầu. Bạn có chắc chắn muốn phê duyệt hoàn thành bước này?',
+                                  okText: 'Phê duyệt hoàn thành',
+                                  cancelText: 'Quay lại',
+                                  centered: true,
+                                  onOk: () => handleReview('COMPLETED')
+                                });
+                              }}
+                              loading={isSaving}
+                              className="rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 h-9 px-4 shadow-xs"
+                            >
+                              Phê duyệt bước
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      /* B3. In Progress / Draft / Rejected */
+                      (() => {
+                        const s5CompletedCount = campaign?.courses?.filter((c: any) => {
+                          const st = c.status;
+                          return st === 'COMPLETED' || st === 'READY' || st === 'APPROVED';
+                        }).length || 0;
+                        const s5TotalCount = campaign?.courses?.length || 0;
+                        const isS5AllCompleted = s5TotalCount > 0 && s5CompletedCount === s5TotalCount;
+
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 font-medium px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200">
+                              Đã duyệt: <strong className="text-emerald-700">{s5CompletedCount}</strong>/{s5TotalCount} môn
+                            </span>
+                            {!isS5AllCompleted ? (
+                              <Tooltip title={`Vui lòng hoàn tất phê duyệt đề cương tất cả các học phần trước khi nghiệm thu bước (còn ${s5TotalCount - s5CompletedCount} môn chưa duyệt)`}>
+                                <span>
+                                  <Button
+                                    type="primary"
+                                    icon={<Send size={14} />}
+                                    disabled
+                                    className="rounded-lg text-xs font-semibold h-9 px-4"
+                                  >
+                                    Nghiệm thu hoàn thành Bước 5
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Button
+                                type="primary"
+                                icon={<Send size={14} />}
+                                loading={isSaving}
+                                disabled={!canEditRole}
+                                onClick={handleSubmitStep}
+                                className="rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 h-9 px-4 shadow-xs"
+                              >
+                                Nghiệm thu hoàn thành Bước 5
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </Space>
                 ) : (
-                  /* 2. GENERAL WORKFLOW FOR OTHER STEPS (S2, S3, S5, S6...) */
+                  /* 3. GENERAL WORKFLOW FOR OTHER STEPS (S2, S3, S6...) */
                   <>
                     {/* A. When in Edit mode: strictly ONLY [ Hủy bỏ ] and [ Lưu ] */}
                     {isEdit ? (
