@@ -8,6 +8,7 @@ import {
 import {
   Save, Edit, FileText, CheckCircle2, Clock, AlertCircle, AlertTriangle, Send, Lock, RotateCcw, Globe
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import AppShell from '@/components/layout/AppShell';
 import { surveyCampaignService } from '@/services/surveyCampaignService';
 import { resolveStepStatus, getStepLockReason, WORKFLOW_STEP_STATUS_MAP, getStepCustomBadge } from '@/constants/workflowStepStatus';
@@ -387,6 +388,7 @@ export default function CurriculumDevelopmentStepPage() {
           <S1_KHAO_SAT_NHU_CAU_Renderer
             ref={s1Ref}
             step={step}
+            campaign={campaign}
             readonly={!isEdit}
             data={formData}
             onChange={setFormData}
@@ -1061,7 +1063,14 @@ export default function CurriculumDevelopmentStepPage() {
         )}
 
         {/* Content Section */}
-        <div className="bg-white rounded-md border border-slate-200/80 shadow-none overflow-hidden p-6 min-h-0 flex-1">
+        <div
+          className={cn(
+            "bg-white rounded-md border border-slate-200/80 shadow-none min-h-0 flex-1",
+            step?.configuration?.screenCode === 'S5_CLO'
+              ? 'p-0 border-0 bg-transparent overflow-visible'
+              : 'p-6 overflow-hidden'
+          )}
+        >
           {renderContent()}
         </div>
       </div>

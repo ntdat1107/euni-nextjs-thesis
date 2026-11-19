@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Button, Select, Tag, Typography } from 'antd';
+import { Button, Select, Tag, Typography, message } from 'antd';
 import { Plus, Trash2, BookOpen, Target, Sparkles } from 'lucide-react';
 import { FastTextArea } from '@/components/common/FastInputs';
 import { COItem, CODomain, CourseSyllabusData } from './types';
 import { CO_DOMAIN_OPTIONS, getCoDomainMeta, uid } from './constants';
 import { helperExtractCos, helperSyncObjectivesFromCos } from './utils';
+import { AiAssistantModal } from '@/components/common/ai/AiAssistantModal';
 
 const RichtextEditor = dynamic(() => import('@/components/common/RichtextEditor'), {
   ssr: false,
@@ -23,6 +24,7 @@ interface S5TabGeneralProps {
 }
 
 export const S5TabGeneral: React.FC<S5TabGeneralProps> = ({ data, readonly, onChange }) => {
+  const [isAiCoOpen, setIsAiCoOpen] = useState(false);
   const cos = useMemo(() => helperExtractCos(data), [data.cos, data.knowledgeObjective, data.skillsObjective, data.attitudesObjective]);
 
   const handleUpdateCos = useCallback((newCos: COItem[]) => {
@@ -32,6 +34,21 @@ export const S5TabGeneral: React.FC<S5TabGeneralProps> = ({ data, readonly, onCh
       ...syncedObjectives,
     });
   }, [onChange]);
+
+  const handleApplyAiCo = useCallback((result: any) => {
+    if (result.cos && result.cos.length > 0) {
+      const newCos: COItem[] = result.cos.map((c: any, idx: number) => ({
+        id: uid(),
+        code: `CO${idx + 1}`,
+        domain: c.domain || 'KNOWLEDGE',
+        content: c.content || '',
+      }));
+      handleUpdateCos(newCos);
+      message.success('Đã áp dụng các mục tiêu học phần (CO) do AI đề xuất');
+    } else if (result.rawHtml) {
+      message.info('Đã nhận phản hồi từ AI');
+    }
+  }, [handleUpdateCos]);
 
   const handleAddCo = () => {
     const nextIdx = cos.length + 1;
@@ -85,6 +102,7 @@ export const S5TabGeneral: React.FC<S5TabGeneralProps> = ({ data, readonly, onCh
         <RichtextEditor
           value={data.courseDescription || ''}
           disabled={readonly}
+          showAiButton={true}
           contentType="COURSE_DESCRIPTION"
           metadata={{ courseName: data.courseName, courseCode: data.courseCode, credits: data.credits }}
           minHeight={120}
@@ -114,6 +132,16 @@ export const S5TabGeneral: React.FC<S5TabGeneralProps> = ({ data, readonly, onCh
               </p>
             </div>
           </div>
+          {!readonly && (
+            <Button
+              size="small"
+              icon={<Sparkles size={13} className="text-indigo-600 animate-pulse" />}
+              onClick={() => setIsAiCoOpen(true)}
+              className="bg-indigo-50/90 hover:bg-indigo-100 border-indigo-200 text-indigo-700 text-xs font-semibold rounded-md h-7 px-2.5 flex items-center gap-1 shadow-2xs"
+            >
+              Trợ lý AI gợi ý CO
+            </Button>
+          )}
         </div>
 
         {/* Danh sách các CO Items */}
@@ -186,6 +214,27 @@ export const S5TabGeneral: React.FC<S5TabGeneralProps> = ({ data, readonly, onCh
           )}
         </div>
       </div>
+
+      <AiAssistantModal
+        open={isAiCoOpen}
+        onClose={() => setIsAiCoOpen(false)}
+        contentType="CLO"
+        metadata={{
+          'Tên học phần': data.courseName,
+          'Mã học phần': data.courseCode,
+          'Số tín chỉ': data.credits,
+          'Khoa phụ trách': data.department,
+        }}
+        title="Trợ lý AI - Mục tiêu học phần (CO)"
+        subtitle="Tự động đề xuất mục tiêu Kiến thức, Kỹ năng và Mức tự chủ theo Thông tư 17."
+        badgeLabel="HỌC PHẦN CO"
+        quickPrompts={[
+          'Đề xuất bộ Mục tiêu học phần (CO) gồm Kiến thức, Kỹ năng và Mức độ tự chủ/trách nhiệm theo Thông tư 17',
+          'Tối ưu CO theo thang đo Bloom và chuẩn kiểm định AUN-QA',
+          'Bổ sung mục tiêu về kỹ năng làm việc nhóm, đạo đức nghề nghiệp và tự học',
+        ]}
+        onApply={handleApplyAiCo}
+      />
     </div>
   );
 };

@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Switch } from 'antd';
-import { FileText, AlignLeft, Users } from 'lucide-react';
+import { Switch, Button } from 'antd';
+import { FileText, AlignLeft, Users, Sparkles } from 'lucide-react';
 import { FastInput, FastTextArea } from './FastInputs';
 
 interface SurveyMetaHeaderProps {
@@ -11,6 +11,7 @@ interface SurveyMetaHeaderProps {
   targetAudience?: string;
   anonymous?: boolean;
   isFormLocked: boolean;
+  onOpenAi?: () => void;
   onUpdateTitle: (val: string) => void;
   onUpdateTitleImmediate: (val: string) => void;
   onUpdateDescription: (val: string) => void;
@@ -26,6 +27,7 @@ export const SurveyMetaHeader = React.memo(function SurveyMetaHeader({
   targetAudience = '',
   anonymous = false,
   isFormLocked,
+  onOpenAi,
   onUpdateTitle,
   onUpdateTitleImmediate,
   onUpdateDescription,
@@ -37,10 +39,22 @@ export const SurveyMetaHeader = React.memo(function SurveyMetaHeader({
   return (
     <div className="bg-white border-t-4 border-blue-600 rounded-b-xl border-x border-b border-slate-200/90 p-5 shadow-xs space-y-4">
       <div>
-        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5 text-blue-600" />
-          Tên phiếu khảo sát <span className="text-red-500">*</span>
-        </label>
+        <div className="flex items-center justify-between gap-3 mb-1.5 flex-wrap">
+          <label className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-blue-600" />
+            Tên phiếu khảo sát <span className="text-red-500">*</span>
+          </label>
+          {!isFormLocked && onOpenAi && (
+            <Button
+              size="small"
+              icon={<Sparkles size={13} className="text-indigo-600 animate-pulse" />}
+              onClick={onOpenAi}
+              className="bg-indigo-50/90 hover:bg-indigo-100 border-indigo-200 text-indigo-700 text-xs font-semibold rounded-md h-7 px-2.5 flex items-center gap-1 shadow-2xs"
+            >
+              Trợ lý AI gợi ý câu hỏi khảo sát
+            </Button>
+          )}
+        </div>
         <FastInput
           value={title}
           disabled={isFormLocked}

@@ -12,11 +12,12 @@ export type { S1SurveyBuilderRef, S1SurveyBuilderRendererProps };
 // --- S1_KHAO_SAT_NHU_CAU Renderer ---
 export const S1_KHAO_SAT_NHU_CAU_Renderer = React.memo(
   forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRendererProps>(
-    ({ step, readonly, data, onChange, onRefreshStep, onFormLoaded }, ref) => {
+    ({ step, campaign, readonly, data, onChange, onRefreshStep, onFormLoaded }, ref) => {
       return (
         <S1SurveyBuilderRenderer
           ref={ref}
           step={step}
+          campaign={campaign}
           readonly={readonly}
           data={data}
           onChange={onChange}

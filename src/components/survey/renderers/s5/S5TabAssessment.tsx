@@ -89,7 +89,7 @@ export const S5TabAssessment: React.FC<S5TabAssessmentProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl p-6">
+    <div className="space-y-6 w-full p-6">
       {/* 1. Header Bar with KPI Strip & Preset Button */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">

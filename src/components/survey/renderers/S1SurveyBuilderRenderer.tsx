@@ -31,6 +31,7 @@ import {
   QrCode,
   Users,
   History,
+  Sparkles,
 } from 'lucide-react';
 import {
   surveyFormService,
@@ -49,6 +50,7 @@ import { SurveySectionItem } from './s1/SurveySectionItem';
 import { SurveySummaryTab } from './s1/SurveySummaryTab';
 import { SurveySubmissionsTab } from './s1/SurveySubmissionsTab';
 import { SurveyModals } from './s1/SurveyModals';
+import { AiAssistantModal, AiParsedResult } from '@/components/common/ai/AiAssistantModal';
 
 const { Text } = Typography;
 
@@ -64,6 +66,7 @@ export interface S1SurveyBuilderRef {
 
 export interface S1SurveyBuilderRendererProps {
   step: any;
+  campaign?: any;
   readonly: boolean;
   data?: any;
   onChange?: (data: any) => void;
@@ -73,7 +76,7 @@ export interface S1SurveyBuilderRendererProps {
 
 const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRendererProps>(
   function S1SurveyBuilderRenderer(
-    { step, readonly, onChange, onRefreshStep, onFormLoaded },
+    { step, campaign, readonly, onChange, onRefreshStep, onFormLoaded },
     ref
   ) {
     const stepId = step?.id;
@@ -96,6 +99,100 @@ const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRe
     const [previewSubmission, setPreviewSubmission] = useState<SurveySubmissionItem | null>(null);
     const [rejectModalOpen, setRejectModalOpen] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
+    const [isAiOpen, setIsAiOpen] = useState(false);
+
+    const aiMetadata = useMemo(() => {
+      const prog = campaign?.program || {};
+      return {
+        'Tên chương trình đào tạo': campaign?.programName || prog.name || formConfig?.programName || '',
+        'Mã chương trình': campaign?.programCode || prog.code || formConfig?.programCode || '',
+        'Khoa / Đơn vị': prog.facultyName || campaign?.faculty?.name || '',
+        'Chuyên ngành': prog.majorName || campaign?.major?.name || '',
+        'Tên đợt rà soát CTĐT': campaign?.name || '',
+        'Tiêu đề khảo sát hiện tại': formConfig?.title || '',
+        'Đối tượng khảo sát mục tiêu': formConfig?.targetAudience || 'Doanh nghiệp / Nhà tuyển dụng / Cựu sinh viên',
+      };
+    }, [campaign, formConfig]);
+
+    const handleApplyAiSurvey = useCallback((result: AiParsedResult) => {
+      if (!result.surveyForm) {
+        message.warning('Không tìm thấy cấu trúc biểu mẫu khảo sát trong phản hồi của AI.');
+        return;
+      }
+
+      const aiForm = result.surveyForm;
+      const newSections: SurveySection[] = (aiForm.sections || []).map((sec, sIdx) => ({
+        title: sec.title || `Phần ${sIdx + 1}: Nội dung mới`,
+        description: sec.description || '',
+        orderIndex: sIdx + 1,
+        questions: (sec.questions || []).map((q, qIdx) => ({
+          content: q.content,
+          helpText: q.helpText,
+          questionType: (q.questionType || 'SHORT_TEXT') as SurveyQuestionType,
+          required: q.required !== false,
+          orderIndex: qIdx + 1,
+          minRating: q.questionType === 'LIKERT_SCALE' ? (q.minRating || 1) : undefined,
+          maxRating: q.questionType === 'LIKERT_SCALE' ? (q.maxRating || 5) : undefined,
+          options: q.options?.map((opt, oIdx) => ({
+            content: opt.content,
+            orderIndex: opt.orderIndex || oIdx + 1,
+          })),
+        })),
+      }));
+
+      const hasExistingQuestions = (formConfigRef.current?.sections || []).some(
+        (s) => (s.questions || []).length > 0
+      );
+
+      const applyData = (mode: 'replace' | 'append') => {
+        setFormConfig((prev) => {
+          if (!prev) return prev;
+          let finalSections: SurveySection[] = [];
+          if (mode === 'replace') {
+            finalSections = newSections;
+          } else {
+            const currentCount = prev.sections?.length || 0;
+            const appended = newSections.map((sec, idx) => ({
+              ...sec,
+              orderIndex: currentCount + idx + 1,
+            }));
+            finalSections = [...(prev.sections || []), ...appended];
+          }
+
+          const next: SurveyForm = {
+            ...prev,
+            title: (mode === 'replace' && aiForm.title) ? aiForm.title : (prev.title || aiForm.title || ''),
+            description: (mode === 'replace' && aiForm.description) ? aiForm.description : (prev.description || aiForm.description || ''),
+            targetAudience: (mode === 'replace' && aiForm.targetAudience) ? aiForm.targetAudience : (prev.targetAudience || aiForm.targetAudience || ''),
+            sections: finalSections,
+          };
+
+          formConfigRef.current = next;
+          onChangeRef.current?.(next);
+          return next;
+        });
+
+        const totalQ = newSections.reduce((acc, s) => acc + (s.questions?.length || 0), 0);
+        message.success(`Đã áp dụng ${newSections.length} phần và ${totalQ} câu hỏi khảo sát từ Trợ lý AI`);
+      };
+
+      if (hasExistingQuestions) {
+        Modal.confirm({
+          title: 'Áp dụng câu hỏi khảo sát từ AI',
+          content: 'Biểu mẫu hiện tại đã có câu hỏi. Bạn muốn thay thế toàn bộ hay bổ sung các phần mới vào cuối biểu mẫu hiện tại?',
+          okText: 'Thay thế toàn bộ',
+          cancelText: 'Bổ sung tiếp nối',
+          centered: true,
+          onOk: () => applyData('replace'),
+          onCancel: (e: any) => {
+            if (e?.triggerCancel) return;
+            applyData('append');
+          },
+        });
+      } else {
+        applyData('replace');
+      }
+    }, []);
 
     // Keep callback props in refs to completely decouple effect dependencies from parent renders
     const onChangeRef = useRef(onChange);
@@ -835,6 +932,7 @@ const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRe
                     targetAudience={formConfig.targetAudience}
                     anonymous={formConfig.anonymous}
                     isFormLocked={isFormLocked}
+                    onOpenAi={() => setIsAiOpen(true)}
                     onUpdateTitle={onUpdateTitle}
                     onUpdateTitleImmediate={onUpdateTitleImmediate}
                     onUpdateDescription={onUpdateDescription}
@@ -869,15 +967,23 @@ const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRe
                     ))}
 
                     {!isFormLocked && (
-                      <Button
-                        type="dashed"
-                        block
-                        icon={<Plus className="w-4 h-4" />}
-                        onClick={handleAddSection}
-                        className="rounded-xl border-dashed border-slate-300 text-slate-600 font-semibold py-3 h-auto hover:border-blue-500 hover:text-blue-600 transition-colors text-xs"
-                      >
-                        Thêm phần khảo sát mới (New Section)
-                      </Button>
+                      <div className="flex items-center gap-2.5">
+                        <Button
+                          type="dashed"
+                          icon={<Plus className="w-4 h-4" />}
+                          onClick={handleAddSection}
+                          className="rounded-xl border-dashed border-slate-300 text-slate-600 font-semibold py-3 h-auto hover:border-blue-500 hover:text-blue-600 transition-colors text-xs flex-1"
+                        >
+                          Thêm phần khảo sát mới (New Section)
+                        </Button>
+                        <Button
+                          icon={<Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />}
+                          onClick={() => setIsAiOpen(true)}
+                          className="rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/90 text-indigo-700 font-semibold py-3 h-auto transition-colors text-xs flex items-center gap-1.5 px-4 shrink-0 shadow-2xs"
+                        >
+                          Trợ lý AI gợi ý câu hỏi
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -935,6 +1041,18 @@ const S1SurveyBuilderRenderer = forwardRef<S1SurveyBuilderRef, S1SurveyBuilderRe
           formVersion={formConfig.version}
           previewSubmission={previewSubmission}
           onClosePreviewSubmission={() => setPreviewSubmission(null)}
+        />
+
+        <AiAssistantModal
+          open={isAiOpen}
+          onClose={() => setIsAiOpen(false)}
+          contentType="SURVEY_QUESTIONS"
+          metadata={aiMetadata}
+          title="Trợ lý AI - Biểu mẫu & Câu hỏi khảo sát"
+          subtitle="Tự động đề xuất cấu trúc các phần và danh mục câu hỏi khảo sát các bên liên quan theo chuẩn AUN-QA / MOET."
+          badgeLabel="BƯỚC 1: KHẢO SÁT NHU CẦU"
+          applyButtonText="Áp dụng vào biểu mẫu khảo sát"
+          onApply={handleApplyAiSurvey}
         />
       </div>
     );

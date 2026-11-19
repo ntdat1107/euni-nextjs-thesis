@@ -26,6 +26,7 @@ const onRefreshed = (token: string) => {
 const handleLogout = () => {
   if (typeof window !== 'undefined' && !isLogoutInProgress) {
     isLogoutInProgress = true;
+    refreshSubscribers = [];
     localStorage.removeItem('euni_access_token');
     localStorage.removeItem('euni_refresh_token');
     localStorage.removeItem('euni_user');
@@ -34,6 +35,75 @@ const handleLogout = () => {
       const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?session=expired&redirect=${redirectUrl}`;
     }
+  }
+};
+
+const syncUserTokenVersion = (tokenVersion?: number) => {
+  if (tokenVersion === undefined) return;
+  const userStr = localStorage.getItem('euni_user');
+  if (!userStr) return;
+  try {
+    const user = JSON.parse(userStr);
+    user.tokenVersion = tokenVersion;
+    localStorage.setItem('euni_user', JSON.stringify(user));
+  } catch (e) {}
+};
+
+const showForbiddenModal = (messageText?: string) => {
+  if (typeof window === 'undefined') return;
+  Modal.error({
+    title: 'Truy cập bị từ chối (403)',
+    content: messageText || 'Bạn không có quyền thực hiện hành động này.',
+    okText: 'Về trang chủ',
+    onOk: () => {
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
+    }
+  });
+};
+
+const refreshAndRetry = async (
+  originalRequest: InternalAxiosRequestConfig & { _retry?: boolean }
+): Promise<any> => {
+  originalRequest._retry = true;
+  isRefreshing = true;
+
+  try {
+    const refreshToken = localStorage.getItem('euni_refresh_token');
+    if (!refreshToken) {
+      handleLogout();
+      return new Promise(() => {});
+    }
+
+    const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
+    const resData = res.data;
+    const dataPayload = resData?.data || resData;
+    const accessToken = dataPayload?.accessToken;
+
+    if (!accessToken) {
+      handleLogout();
+      return new Promise(() => {});
+    }
+
+    localStorage.setItem('euni_access_token', accessToken);
+    if (dataPayload.refreshToken) {
+      localStorage.setItem('euni_refresh_token', dataPayload.refreshToken);
+    }
+
+    syncUserTokenVersion(dataPayload.tokenVersion);
+
+    if (originalRequest.headers) {
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    onRefreshed(accessToken);
+    return apiClient(originalRequest);
+  } catch (refreshError) {
+    handleLogout();
+    return new Promise(() => {});
+  } finally {
+    isRefreshing = false;
   }
 };
 
@@ -56,13 +126,16 @@ apiClient.interceptors.request.use(
 // Add a response interceptor to handle errors and ApiResponse wrapper
 apiClient.interceptors.response.use(
   (response) => {
-    // If our backend returns ApiResponse { success: boolean, data: any, message: string }
     if (response.data && typeof response.data.success === 'boolean') {
       if (response.data.success) {
         return response.data.data;
-      } else {
-        return Promise.reject(new Error(response.data.message || 'Operation failed'));
       }
+      const code = response.data.code;
+      if (code === 'UNAUTHORIZED' || code === 'TOKEN_EXPIRED') {
+        handleLogout();
+        return new Promise(() => {});
+      }
+      return Promise.reject(new Error(response.data.message || 'Operation failed'));
     }
     return response.data;
   },
@@ -71,33 +144,28 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (isLogoutInProgress) {
+      return new Promise(() => {});
+    }
+
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     const responseData = error.response?.data as any;
 
-    if (isLogoutInProgress) {
+    if (originalRequest?.url?.includes('/auth/login')) {
       return Promise.reject(error);
     }
 
-    // Check if error is related to Token Expiration / Unauthorized
-    const isUnauthorized = 
-      error.response?.status === 401 || 
-      responseData?.code === 'UNAUTHORIZED' || 
+    const isUnauthorized =
+      error.response?.status === 401 ||
+      responseData?.code === 'UNAUTHORIZED' ||
       responseData?.code === 'TOKEN_EXPIRED';
 
     if (isUnauthorized && typeof window !== 'undefined') {
-      // If it's the refresh token endpoint itself that failed, logout immediately
-      if (originalRequest.url?.includes('/auth/refresh-token')) {
+      if (originalRequest?.url?.includes('/auth/refresh-token') || originalRequest?._retry) {
         handleLogout();
-        return Promise.reject(error);
+        return new Promise(() => {});
       }
 
-      // If this request already retried once and failed again, logout
-      if (originalRequest._retry) {
-        handleLogout();
-        return Promise.reject(error);
-      }
-
-      // If refresh token request is already in-flight, queue this request
       if (isRefreshing) {
         return new Promise((resolve) => {
           subscribeTokenRefresh((token: string) => {
@@ -109,78 +177,11 @@ apiClient.interceptors.response.use(
         });
       }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = localStorage.getItem('euni_refresh_token');
-        if (!refreshToken) {
-          handleLogout();
-          return Promise.reject(error);
-        }
-
-        // Call backend refresh token API
-        const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
-        const resData = res.data;
-
-        if (resData && (resData.success || resData.accessToken)) {
-          const dataPayload = resData.data || resData;
-          const { accessToken, refreshToken: newRefreshToken, tokenVersion } = dataPayload;
-
-          if (!accessToken) {
-            handleLogout();
-            return Promise.reject(error);
-          }
-
-          localStorage.setItem('euni_access_token', accessToken);
-          if (newRefreshToken) {
-            localStorage.setItem('euni_refresh_token', newRefreshToken);
-          }
-
-          // Sync tokenVersion in euni_user if available
-          const userStr = localStorage.getItem('euni_user');
-          if (userStr && tokenVersion !== undefined) {
-            try {
-              const user = JSON.parse(userStr);
-              user.tokenVersion = tokenVersion;
-              localStorage.setItem('euni_user', JSON.stringify(user));
-            } catch (e) {}
-          }
-
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-          }
-
-          onRefreshed(accessToken);
-          return apiClient(originalRequest);
-        } else {
-          handleLogout();
-          return Promise.reject(error);
-        }
-      } catch (refreshError) {
-        handleLogout();
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+      return refreshAndRetry(originalRequest);
     }
 
-    // Handle 403 Forbidden (Permission Denied)
     if (error.response?.status === 403 || responseData?.code === 'FORBIDDEN') {
-      if (typeof window !== 'undefined') {
-        const msg = responseData?.message || 'Bạn không có quyền thực hiện hành động này.';
-
-        Modal.error({
-          title: 'Truy cập bị từ chối (403)',
-          content: msg,
-          okText: 'Về trang chủ',
-          onOk: () => {
-            if (window.location.pathname !== '/') {
-              window.location.href = '/';
-            }
-          }
-        });
-      }
+      showForbiddenModal(responseData?.message);
     }
 
     return Promise.reject(error);
@@ -189,13 +190,15 @@ apiClient.interceptors.response.use(
 
 /**
  * Universal fetch wrapper for streaming API calls (SSE / ReadableStream).
- * Automatically injects JWT Access Token, handles HTTP 401 Unauthorized by calling
- * the /auth/refresh-token API, updates localStorage, and seamlessly retries the request.
  */
 export async function fetchWithTokenRefresh(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  if (isLogoutInProgress) {
+    return new Promise(() => {});
+  }
+
   const getAuthHeader = (): Record<string, string> => {
     if (typeof window === 'undefined') return {};
     const token = localStorage.getItem('euni_access_token');
@@ -209,41 +212,42 @@ export async function fetchWithTokenRefresh(
 
   let response = await fetch(url, { ...options, headers: initialHeaders });
 
-  // If initial request returned HTTP 401, attempt to refresh token and retry
   if (response.status === 401 && typeof window !== 'undefined') {
     const refreshToken = localStorage.getItem('euni_refresh_token');
-    if (refreshToken) {
-      try {
-        const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        const refreshData = await refreshRes.json();
-        const dataPayload = refreshData.data || refreshData;
-        const newAccessToken = dataPayload?.accessToken;
-
-        if (newAccessToken) {
-          localStorage.setItem('euni_access_token', newAccessToken);
-          if (dataPayload.refreshToken) {
-            localStorage.setItem('euni_refresh_token', dataPayload.refreshToken);
-          }
-
-          // Retry request with new Access Token
-          const retryHeaders: Record<string, string> = {
-            ...((options.headers as Record<string, string>) || {}),
-            Authorization: `Bearer ${newAccessToken}`,
-          };
-          response = await fetch(url, { ...options, headers: retryHeaders });
-        } else {
-          handleLogout();
-        }
-      } catch (err) {
-        handleLogout();
-      }
-    } else {
+    if (!refreshToken) {
       handleLogout();
+      return new Promise(() => {});
+    }
+
+    try {
+      const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const refreshData = await refreshRes.json();
+      const dataPayload = refreshData.data || refreshData;
+      const newAccessToken = dataPayload?.accessToken;
+
+      if (!newAccessToken) {
+        handleLogout();
+        return new Promise(() => {});
+      }
+
+      localStorage.setItem('euni_access_token', newAccessToken);
+      if (dataPayload.refreshToken) {
+        localStorage.setItem('euni_refresh_token', dataPayload.refreshToken);
+      }
+
+      const retryHeaders: Record<string, string> = {
+        ...((options.headers as Record<string, string>) || {}),
+        Authorization: `Bearer ${newAccessToken}`,
+      };
+      response = await fetch(url, { ...options, headers: retryHeaders });
+    } catch (err) {
+      handleLogout();
+      return new Promise(() => {});
     }
   }
 

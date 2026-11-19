@@ -49,15 +49,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('euni_access_token');
-      const refreshToken = localStorage.getItem('euni_refresh_token');
-      const userData = localStorage.getItem('euni_user');
-      return Boolean(userData && (token || refreshToken));
-    }
-    return null;
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
 
   // --- Instant Navigation Feedback ---
@@ -196,7 +188,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={cn(
-          'flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 max-w-full overflow-x-hidden',
+          'flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 max-w-full overflow-x-clip',
           sidebarCollapsed ? 'ml-[80px]' : 'ml-[220px]'
         )}
       >

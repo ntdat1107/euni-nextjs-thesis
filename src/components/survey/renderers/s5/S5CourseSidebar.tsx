@@ -147,51 +147,53 @@ export const S5CourseSidebar: React.FC<S5CourseSidebarProps> = ({
   // Render Collapsed Sidebar
   if (isCollapsed) {
     return (
-      <div className="w-[60px] shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col h-full items-center py-2.5 transition-all duration-200">
-        <Tooltip title="Mở rộng danh mục học phần" placement="right">
-          <Button
-            type="text"
-            size="small"
-            icon={<PanelLeftOpen size={16} className="text-slate-600" />}
-            onClick={() => setIsCollapsed(false)}
-            className="mb-3 hover:bg-slate-200"
-          />
-        </Tooltip>
+      <div className="w-[60px] shrink-0 border-r border-slate-200 bg-slate-50/70 self-stretch rounded-l-lg transition-all duration-200">
+        <div className="sticky top-16 max-h-[calc(100vh-5rem)] h-full flex flex-col items-center py-2.5">
+          <Tooltip title="Mở rộng danh mục học phần" placement="right">
+            <Button
+              type="text"
+              size="small"
+              icon={<PanelLeftOpen size={16} className="text-slate-600" />}
+              onClick={() => setIsCollapsed(false)}
+              className="mb-3 hover:bg-slate-200"
+            />
+          </Tooltip>
 
-        <div className="w-8 h-px bg-slate-200 mb-2" />
+          <div className="w-8 h-px bg-slate-200 mb-2" />
 
-        <div className="flex-1 w-full overflow-y-auto px-1 space-y-1.5">
-          {courses.map(course => {
-            const isSelected = String(course.courseId) === String(selectedCourseId);
-            const st = getCourseStatus(course);
-            return (
-              <Tooltip
-                key={course.courseId}
-                placement="right"
-                title={
-                  <div className="text-xs">
-                    <div className="font-bold">{course.courseCode} - {course.courseName}</div>
-                    <div className="text-[11px] text-slate-300">{course.credits} TC • Học kỳ {course.semester || 1}</div>
-                    <div className="mt-1">{renderStatusBadge(st)}</div>
-                  </div>
-                }
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectCourse(String(course.courseId))}
-                  className={cn(
-                    "w-full h-10 rounded flex flex-col items-center justify-center transition-all cursor-pointer",
-                    isSelected ? "bg-white shadow-xs border border-blue-400 text-blue-700" : "hover:bg-slate-200/60 text-slate-600"
-                  )}
+          <div className="flex-1 w-full overflow-y-auto custom-scrollbar px-1 space-y-1.5">
+            {courses.map(course => {
+              const isSelected = String(course.courseId) === String(selectedCourseId);
+              const st = getCourseStatus(course);
+              return (
+                <Tooltip
+                  key={course.courseId}
+                  placement="right"
+                  title={
+                    <div className="text-xs">
+                      <div className="font-bold">{course.courseCode} - {course.courseName}</div>
+                      <div className="text-[11px] text-slate-300">{course.credits} TC • Học kỳ {course.semester || 1}</div>
+                      <div className="mt-1">{renderStatusBadge(st)}</div>
+                    </div>
+                  }
                 >
-                  {renderStatusIcon(st)}
-                  <span className="text-[9px] font-mono font-bold leading-none mt-1 truncate max-w-[46px]">
-                    {course.courseCode.slice(0, 5)}
-                  </span>
-                </button>
-              </Tooltip>
-            );
-          })}
+                  <button
+                    type="button"
+                    onClick={() => onSelectCourse(String(course.courseId))}
+                    className={cn(
+                      "w-full h-10 rounded flex flex-col items-center justify-center transition-all cursor-pointer",
+                      isSelected ? "bg-white shadow-xs border border-blue-400 text-blue-700" : "hover:bg-slate-200/60 text-slate-600"
+                    )}
+                  >
+                    {renderStatusIcon(st)}
+                    <span className="text-[9px] font-mono font-bold leading-none mt-1 truncate max-w-[46px]">
+                      {course.courseCode.slice(0, 5)}
+                    </span>
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -199,60 +201,61 @@ export const S5CourseSidebar: React.FC<S5CourseSidebarProps> = ({
 
   // Render Expanded Sidebar
   return (
-    <div className="w-[320px] shrink-0 border-r border-slate-200 bg-slate-50/60 flex flex-col h-full overflow-hidden transition-all duration-200">
-      {/* Header with Title, Count, Collapse Button */}
-      <div className="p-3 border-b border-slate-200 space-y-2 bg-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Text strong className="text-xs text-slate-800 uppercase tracking-wider">
-              Danh mục học phần
-            </Text>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              {statusCounts.COMPLETED}/{courses.length}
-            </span>
+    <div className="w-[320px] shrink-0 border-r border-slate-200 bg-slate-50/70 self-stretch rounded-l-lg transition-all duration-200">
+      <div className="sticky top-16 max-h-[calc(100vh-5rem)] h-full flex flex-col overflow-hidden">
+        {/* Header with Title, Count, Collapse Button */}
+        <div className="p-3 border-b border-slate-200 space-y-2 bg-white/95 backdrop-blur-xs shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Text strong className="text-xs text-slate-800 uppercase tracking-wider">
+                Danh mục học phần
+              </Text>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {statusCounts.COMPLETED}/{courses.length}
+              </span>
+            </div>
+
+            <Tooltip title="Thu gọn danh mục" placement="left">
+              <Button
+                type="text"
+                size="small"
+                icon={<PanelLeftClose size={15} className="text-slate-500 hover:text-slate-800" />}
+                onClick={() => setIsCollapsed(true)}
+              />
+            </Tooltip>
           </div>
 
-          <Tooltip title="Thu gọn danh mục" placement="left">
-            <Button
-              type="text"
-              size="small"
-              icon={<PanelLeftClose size={15} className="text-slate-500 hover:text-slate-800" />}
-              onClick={() => setIsCollapsed(true)}
-            />
-          </Tooltip>
+          {/* Search */}
+          <Input
+            prefix={<Search size={13} className="text-slate-400" />}
+            placeholder="Tìm mã hoặc tên môn..."
+            size="small"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            allowClear
+            className="rounded text-xs"
+          />
+
+          {/* Status Filter */}
+          <Select
+            size="small"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            className="w-full text-xs"
+            suffixIcon={<Filter size={12} className="text-slate-400" />}
+            options={[
+              { value: 'ALL', label: `Tất cả trạng thái (${statusCounts.ALL})` },
+              { value: 'DRAFT', label: `Chưa soạn (${statusCounts.DRAFT})` },
+              { value: 'IN_PROGRESS', label: `Đang soạn (${statusCounts.IN_PROGRESS})` },
+              { value: 'UNDER_REVIEW', label: `Chờ phê duyệt (${statusCounts.UNDER_REVIEW})` },
+              { value: 'REJECTED', label: `Yêu cầu chỉnh sửa (${statusCounts.REJECTED})` },
+              { value: 'COMPLETED', label: `Đã hoàn tất (${statusCounts.COMPLETED})` },
+            ]}
+          />
         </div>
 
-        {/* Search */}
-        <Input
-          prefix={<Search size={13} className="text-slate-400" />}
-          placeholder="Tìm mã hoặc tên môn..."
-          size="small"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          allowClear
-          className="rounded text-xs"
-        />
-
-        {/* Status Filter */}
-        <Select
-          size="small"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          className="w-full text-xs"
-          suffixIcon={<Filter size={12} className="text-slate-400" />}
-          options={[
-            { value: 'ALL', label: `Tất cả trạng thái (${statusCounts.ALL})` },
-            { value: 'DRAFT', label: `Chưa soạn (${statusCounts.DRAFT})` },
-            { value: 'IN_PROGRESS', label: `Đang soạn (${statusCounts.IN_PROGRESS})` },
-            { value: 'UNDER_REVIEW', label: `Chờ phê duyệt (${statusCounts.UNDER_REVIEW})` },
-            { value: 'REJECTED', label: `Yêu cầu chỉnh sửa (${statusCounts.REJECTED})` },
-            { value: 'COMPLETED', label: `Đã hoàn tất (${statusCounts.COMPLETED})` },
-          ]}
-        />
-      </div>
-
-      {/* Course List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-1.5 space-y-1">
+        {/* Course List */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100 p-2 space-y-1.5">
         {filteredCourses.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400">
             Không tìm thấy học phần phù hợp
@@ -306,5 +309,6 @@ export const S5CourseSidebar: React.FC<S5CourseSidebarProps> = ({
         )}
       </div>
     </div>
-  );
+  </div>
+);
 };

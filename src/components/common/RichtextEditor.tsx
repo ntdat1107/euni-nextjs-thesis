@@ -32,10 +32,9 @@ import {
   TableColumnResize,
   TableCaption
 } from 'ckeditor5';
-import { Sparkles, Send, Loader2, RefreshCw, PlusCircle, Replace, X, Bot, Check } from 'lucide-react';
-import { Popover, Input, Button, Tag, Tooltip, Modal } from 'antd';
-
-import { fetchWithTokenRefresh } from '@/services/api';
+import { Sparkles } from 'lucide-react';
+import { Button } from 'antd';
+import { AiAssistantModal, parsePeoContent } from '@/components/common/ai/AiAssistantModal';
 import 'ckeditor5/ckeditor5.css';
 
 interface RichtextEditorProps {
@@ -48,6 +47,7 @@ interface RichtextEditorProps {
   contentType?: 'CLO' | 'PLO' | 'PEO' | 'SYLLABUS' | 'COURSE_DESCRIPTION' | 'PREREQUISITES' | 'ASSESSMENT' | 'GENERAL' | string;
   metadata?: Record<string, any>;
   onApplyParsed?: (parsed: { rawHtml: string; mucTieuChung?: string; peos?: string[] }) => void;
+  showAiButton?: boolean;
 }
 
 const CK_PLUGINS = [
@@ -140,14 +140,11 @@ export default function RichtextEditor({
   error = false,
   contentType = 'GENERAL',
   metadata,
-  onApplyParsed
+  onApplyParsed,
+  showAiButton = false,
 }: RichtextEditorProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
-  const [promptText, setPromptText] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [streamedText, setStreamedText] = useState('');
-  const [hasCompletedStream, setHasCompletedStream] = useState(false);
 
   const editorInstanceRef = useRef<any>(null);
   const isEditorReadyRef = useRef(false);
@@ -169,338 +166,18 @@ export default function RichtextEditor({
     placeholder: placeholder || "Nhập nội dung...",
   }), [placeholder]);
 
-  const handleGenerateAiText = async (promptToRun?: string) => {
-    const finalPrompt = promptToRun || promptText;
-    if (!finalPrompt.trim() || isGenerating) return;
-
-    setIsGenerating(true);
-    setStreamedText('');
-    setHasCompletedStream(false);
-
-    try {
-      const response = await fetchWithTokenRefresh('/api/ai/generate-stream', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          prompt: finalPrompt,
-          contentType: contentType || 'GENERAL',
-          metadata: metadata || {}
-        }),
-      });
-
-      if (!response.body) throw new Error('ReadableStream not supported');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullParsedText = '';
-      let buffer = '';
-
-      // Queue for smooth typewriter pacing
-      let charQueue = '';
-      let displayedLength = 0;
-      let streamFinished = false;
-
-      // Typewriter timer: reveals 3-6 characters every 15ms for smooth 60fps streaming
-      const timer = setInterval(() => {
-        if (displayedLength < charQueue.length) {
-          // Accelerate if queue is getting long (>100 chars queued)
-          const remaining = charQueue.length - displayedLength;
-          const step = remaining > 200 ? 12 : remaining > 80 ? 6 : 3;
-          displayedLength = Math.min(displayedLength + step, charQueue.length);
-          setStreamedText(charQueue.slice(0, displayedLength));
-        } else if (streamFinished) {
-          clearInterval(timer);
-          setStreamedText(charQueue);
-          setHasCompletedStream(true);
-          setIsGenerating(false);
-        }
-      }, 15);
-
-      while (true) {
-        const { done, value: chunk } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(chunk, { stream: true });
-        
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('data:')) {
-            const dataContent = line.slice(line.indexOf('data:') + 5);
-            fullParsedText += dataContent;
-          } else if (trimmed && !trimmed.startsWith(':')) {
-            fullParsedText += line;
-          }
-        }
-        charQueue = fullParsedText;
-      }
-
-      if (buffer.trim()) {
-        if (buffer.startsWith('data:')) {
-          fullParsedText += buffer.slice(buffer.indexOf('data:') + 5);
-        } else {
-          fullParsedText += buffer;
-        }
-        charQueue = fullParsedText;
-      }
-
-      streamFinished = true;
-
-    } catch (err) {
-      console.error('AI Generate Error:', err);
-      setIsGenerating(false);
-    }
-  };
-
-  const parsePeoContent = (html: string) => {
-    if (typeof window === 'undefined') return { rawHtml: html };
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-
-      const pElements = Array.from(doc.querySelectorAll('p'));
-      const mucTieuParas = pElements.filter(p => !p.textContent?.toLowerCase().includes('mục tiêu cụ thể'));
-      const mucTieuChung = mucTieuParas.map(p => p.outerHTML).join('').trim();
-
-      const liElements = Array.from(doc.querySelectorAll('li'));
-      const peos = liElements.map(li => {
-        let text = li.textContent || '';
-        text = text.replace(/^PEO\s*\d+\s*[:\.\-]\s*/i, '').trim();
-        return text;
-      }).filter(t => t.length > 0);
-
-      return { rawHtml: html, mucTieuChung, peos };
-    } catch (err) {
-      return { rawHtml: html };
-    }
-  };
-
-  const handleApplyContent = (mode: 'append' | 'replace') => {
-    if (!streamedText) return;
-    const parsed = parsePeoContent(streamedText);
-
-    let newValue = value || '';
-    if (contentType?.toUpperCase() === 'PEO' && parsed.mucTieuChung && mode === 'replace') {
-      newValue = parsed.mucTieuChung;
-    } else if (mode === 'replace') {
-      newValue = streamedText;
-    } else {
-      newValue = newValue ? `${newValue}\n${streamedText}` : streamedText;
-    }
-
+  const handleApplyAi = (result: { rawHtml: string }) => {
+    const newValue = result.rawHtml;
     if (editorInstanceRef.current && isEditorReadyRef.current) {
       lastEmittedDataRef.current = newValue;
       editorInstanceRef.current.setData(newValue);
     }
-
     onChange(newValue);
-
     if (onApplyParsed) {
-      onApplyParsed(parsed);
+      onApplyParsed(parsePeoContent(newValue));
     }
-
     setIsAiOpen(false);
-    setStreamedText('');
-    setHasCompletedStream(false);
-    setPromptText('');
   };
-
-  const getContextLabel = () => {
-    switch (contentType?.toUpperCase()) {
-      case 'PEO': return 'Mục tiêu đào tạo (PEO)';
-      case 'CLO': return 'Chuẩn đầu ra (CLO)';
-      case 'PLO': return 'Chuẩn đầu ra (PLO)';
-      case 'SYLLABUS': return 'Đề cương môn học';
-      case 'COURSE_DESCRIPTION': return 'Mô tả học phần';
-      case 'PREREQUISITES': return 'Điều kiện môn học';
-      case 'ASSESSMENT': return 'Phương pháp đánh giá';
-      default: return 'Ngữ cảnh học thuật';
-    }
-  };
-
-  const getQuickPrompts = () => {
-    switch (contentType?.toUpperCase()) {
-      case 'PEO':
-        return [
-          "Soạn Mục tiêu chung & các PEO cụ thể cho chương trình đào tạo",
-          "Bổ sung PEO về năng lực quản lý, đạo đức nghề nghiệp & lãnh đạo",
-          "Tối ưu PEO định hướng phát triển sự nghiệp 3-5 năm sau tốt nghiệp"
-        ];
-      case 'CLO':
-        return [
-          "Xây dựng bộ CLO theo thang đo Bloom (Nhớ, Hiểu, Vận dụng, Phân tích...)",
-          "Bổ sung CLO về kỹ năng mềm, thái độ & làm việc nhóm",
-          "Tối ưu các động từ đo lường chuẩn kiểm định AUN-QA / MOET"
-        ];
-      case 'PLO':
-        return [
-          "Soạn bộ PLO chương trình đào tạo chuẩn kiểm định AUN-QA",
-          "Bổ sung các chỉ số hiệu quả PI đo lường cho từng PLO",
-          "Tạo PLO về khả năng tư duy phản biện & giải quyết vấn đề phức tạp"
-        ];
-      case 'SYLLABUS':
-        return [
-          "Gợi ý khung đề cương chi tiết 15 tuần học từ cơ bản đến nâng cao",
-          "Phân bổ hợp lý thời lượng Lý thuyết, Thực hành & Tự học",
-          "Thêm các chủ đề công nghệ hiện đại thực tiễn vào chương trình"
-        ];
-      case 'COURSE_DESCRIPTION':
-        return [
-          "Soạn mô tả tổng quan học phần hấp dẫn & chuẩn học thuật đại học",
-          "Tóm tắt mục tiêu, vai trò và giá trị cốt lõi sinh viên tích lũy được"
-        ];
-      case 'ASSESSMENT':
-        return [
-          "Thiết kế ma trận đánh giá học phần với phân bổ trọng số (%)",
-          "Đề xuất tiêu chí đánh giá chi tiết đồ án/bài tập lớn (Rubrics)"
-        ];
-      default:
-        return [
-          "Viết mô tả chuẩn đầu ra chuyên nghiệp",
-          "Tóm tắt ngắn gọn nội dung kiến thức môn học",
-          "Gợi ý ma trận kỹ năng chi tiết"
-        ];
-    }
-  };
-
-  const quickPrompts = getQuickPrompts();
-
-  const aiPopoverContent = (
-    <div className="w-full p-5 space-y-4 font-sans bg-white rounded-2xl">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-          <Sparkles size={16} className="animate-pulse" />
-        </div>
-        <div>
-          <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
-            <span>Trợ lý AI Trí tuệ nhân tạo</span>
-            <Tag color="blue" className="border-none text-[10px] font-bold uppercase rounded-full px-2 py-0.2 bg-blue-50 text-blue-600">
-              Gemini Flash • {getContextLabel()}
-            </Tag>
-          </div>
-          <div className="text-[11px] text-slate-400 font-medium">Tự động đề xuất & soạn thảo nội dung theo ngữ cảnh {getContextLabel()}</div>
-        </div>
-      </div>
-
-      {/* Quick Prompts */}
-      {!streamedText && !isGenerating && (
-        <div className="space-y-2">
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gợi ý câu lệnh thường dùng:</div>
-          <div className="flex flex-col gap-1.5">
-            {quickPrompts.map((qp, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  setPromptText(qp);
-                  handleGenerateAiText(qp);
-                }}
-                className="group flex items-center justify-between text-xs text-slate-700 bg-slate-50 hover:bg-blue-50/80 hover:text-blue-700 px-3 py-2 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all text-left font-medium"
-              >
-                <span>{qp}</span>
-                <span className="text-[10px] font-semibold text-slate-400 group-hover:text-blue-600 transition-colors">Áp dụng →</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Prompt Input Box */}
-      <div className="space-y-2">
-        <div className="relative">
-          <Input.TextArea
-            rows={3}
-            placeholder="Nhập yêu cầu để AI tạo nội dung (Ví dụ: Viết mô tả chuẩn đầu ra PLO môn học Kiến trúc Phần mềm...)"
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-            disabled={isGenerating}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleGenerateAiText();
-              }
-            }}
-            className="rounded-xl border-slate-200 hover:border-blue-300 focus:border-blue-500 focus:shadow-sm text-xs p-3 leading-relaxed text-slate-800 placeholder:text-slate-400"
-          />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-slate-400 italic">Nhấn Enter để gửi request</span>
-          <Button
-            type="primary"
-            size="middle"
-            icon={isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            onClick={() => handleGenerateAiText()}
-            disabled={!promptText.trim() || isGenerating}
-            className="rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold text-xs px-4 h-8 flex items-center gap-1.5 shadow-sm border-none"
-          >
-            <span>{isGenerating ? 'Đang tạo...' : 'Gửi yêu cầu'}</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Streaming Output Box */}
-      {(isGenerating || streamedText) && (
-        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/90 text-slate-800 space-y-3 shadow-xs">
-          <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/70 font-semibold">
-            <div className="flex items-center gap-2 text-slate-700">
-              <Bot size={15} className="text-blue-600" />
-              <span>{isGenerating ? 'AI đang sinh nội dung...' : 'Kết quả tạo từ AI:'}</span>
-            </div>
-            {isGenerating && (
-              <div className="flex items-center gap-1.5 text-blue-600 text-[11px]">
-                <Loader2 size={13} className="animate-spin" />
-                <span>Streaming...</span>
-              </div>
-            )}
-          </div>
-
-          <div className="ck-content max-h-[300px] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-700 custom-ai-scrollbar">
-            <div dangerouslySetInnerHTML={{ __html: streamedText }} />
-            {isGenerating && (
-              <span className="inline-block w-1.5 h-3.5 bg-blue-600 ml-1 animate-pulse rounded-xs align-middle" />
-            )}
-          </div>
-
-          {hasCompletedStream && (
-            <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between gap-2">
-              <Button
-                size="small"
-                icon={<RefreshCw size={13} />}
-                onClick={() => handleGenerateAiText()}
-                className="bg-white hover:bg-slate-100 border-slate-200 text-slate-600 text-xs rounded-lg font-medium h-8"
-              >
-                Tạo lại
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="small"
-                  icon={<PlusCircle size={13} />}
-                  onClick={() => handleApplyContent('append')}
-                  className="bg-white hover:bg-blue-50 border-blue-200 text-blue-600 text-xs rounded-lg font-semibold h-8"
-                >
-                  Chèn vào cuối
-                </Button>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<Replace size={13} />}
-                  onClick={() => handleApplyContent('replace')}
-                  className="bg-blue-600 hover:bg-blue-700 border-none text-xs font-semibold rounded-lg h-8 px-3 shadow-xs"
-                >
-                  Thay thế tất cả
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div
@@ -509,7 +186,7 @@ export default function RichtextEditor({
       } ${error ? 'has-error' : ''} ${disabled ? 'is-readonly' : ''}`}
       style={{ '--ck-min-height': `${minHeight}px` } as any}
     >
-      {!disabled && (
+      {!disabled && showAiButton && (
         <div className="absolute top-1.5 right-2 z-10 flex items-center gap-1">
           <Button
             type="text"
@@ -521,18 +198,13 @@ export default function RichtextEditor({
             <span>Nhờ AI viết</span>
           </Button>
 
-          <Modal
+          <AiAssistantModal
             open={isAiOpen}
-            onCancel={() => setIsAiOpen(false)}
-            footer={null}
-            width={540}
-            centered
-            destroyOnClose
-            styles={{ body: { padding: 0 } }}
-            className="ai-assistant-modal"
-          >
-            {aiPopoverContent}
-          </Modal>
+            onClose={() => setIsAiOpen(false)}
+            contentType={contentType}
+            metadata={metadata}
+            onApply={handleApplyAi}
+          />
         </div>
       )}
 

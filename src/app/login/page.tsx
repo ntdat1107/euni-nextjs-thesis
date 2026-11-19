@@ -19,6 +19,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasShownExpiredNotice = React.useRef(false);
 
   React.useEffect(() => {
     const token = localStorage.getItem('euni_access_token');
@@ -30,7 +31,8 @@ function LoginContent() {
       router.push(redirect);
     }
 
-    if (searchParams.get('session') === 'expired') {
+    if (searchParams.get('session') === 'expired' && !hasShownExpiredNotice.current) {
+      hasShownExpiredNotice.current = true;
       message.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
       // Clear the session param but keep redirect if needed
       const redirect = searchParams.get('redirect');

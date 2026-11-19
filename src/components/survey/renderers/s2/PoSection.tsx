@@ -119,7 +119,6 @@ export const PoSection = React.memo(function PoSection({
             metadata={campaignMeta}
             minHeight={100}
             onChange={onHeadingChange}
-            onApplyParsed={onApplyParsed}
           />
         </div>
         {errors['mucTieuHeading'] && (
@@ -151,7 +150,7 @@ export const PoSection = React.memo(function PoSection({
             disabled={pos.length >= 10}
             className="text-brand-600 hover:text-brand-700 font-semibold p-0 text-xs"
           >
-            + Thêm mục tiêu (PO)
+            Thêm mục tiêu (PO)
           </Button>
         )}
       </div>

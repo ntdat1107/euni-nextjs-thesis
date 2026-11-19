@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Typography, Tag, Tooltip, Checkbox } from 'antd';
-import { Grid, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { Grid, ChevronDown, ChevronRight, Check, Sparkles } from 'lucide-react';
+import { Button } from 'antd';
 import { CLOItem, PloDomainGroup, PiMetaItem } from './types';
 import { getDomainColor } from './constants';
 
@@ -13,6 +14,7 @@ interface S5CloPloMatrixProps {
   ploDomains: PloDomainGroup[];
   readonly: boolean;
   onToggleMapping: (cloId: string, piCode: string) => void;
+  onOpenAiModal?: () => void;
 }
 
 export const S5CloPloMatrix: React.FC<S5CloPloMatrixProps> = ({
@@ -20,6 +22,7 @@ export const S5CloPloMatrix: React.FC<S5CloPloMatrixProps> = ({
   ploDomains,
   readonly,
   onToggleMapping,
+  onOpenAiModal,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -63,6 +66,19 @@ export const S5CloPloMatrix: React.FC<S5CloPloMatrixProps> = ({
           <Tag color="blue" className="rounded text-[10px] font-semibold px-1.5 py-0 m-0">
             {clos.length} CLO × {totalPis} Chỉ số PI
           </Tag>
+          {!readonly && onOpenAiModal && (
+            <Button
+              size="small"
+              icon={<Sparkles size={13} className="text-indigo-600 animate-pulse" />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenAiModal();
+              }}
+              className="bg-indigo-50/90 hover:bg-indigo-100 border-indigo-200 text-indigo-700 text-xs font-semibold rounded-md h-7 px-2.5 flex items-center gap-1 shadow-2xs ml-1"
+            >
+              Trợ lý AI gợi ý Ma trận
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-3 text-slate-500 text-xs">
@@ -87,7 +103,7 @@ export const S5CloPloMatrix: React.FC<S5CloPloMatrixProps> = ({
             Đánh dấu tích để xác định chuẩn đầu ra học phần (CLO) đóng góp trực tiếp vào chỉ số đo lường (PI) nào của Chương trình đào tạo. Dữ liệu liên kết đồng bộ hai chiều với thông tin chi tiết từng CLO.
           </p>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-[500px]">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs border-collapse">
               <thead className="bg-slate-50 sticky top-0 z-10">
                 {/* Row 0: General Title */}

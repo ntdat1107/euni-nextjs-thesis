@@ -8,8 +8,7 @@ import { surveyCampaignService } from '@/services/surveyCampaignService';
 import { CourseMetaItem, CourseSyllabusData, PloDomainGroup, S5RendererRef } from './s5/types';
 import { S5CourseSidebar } from './s5/S5CourseSidebar';
 import { S5HeaderMeta } from './s5/S5HeaderMeta';
-import { S5TabGeneral } from './s5/S5TabGeneral';
-import { S5TabClos } from './s5/S5TabClos';
+import { S5TabGeneralAndClos } from './s5/S5TabGeneralAndClos';
 import { S5TabSchedule } from './s5/S5TabSchedule';
 import { S5TabAssessment } from './s5/S5TabAssessment';
 import { S5TabMaterials } from './s5/S5TabMaterials';
@@ -69,7 +68,7 @@ export const S5CLORenderer = forwardRef<S5RendererRef, S5CLORendererProps>(({
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [availablePlos, setAvailablePlos] = useState<{ code: string; title: string }[]>([]);
   const [ploDomains, setPloDomains] = useState<PloDomainGroup[]>([]);
-  const [activeTab, setActiveTab] = useState<'info' | 'clo' | 'schedule' | 'assessment' | 'materials'>('info');
+  const [activeTab, setActiveTab] = useState<'clo' | 'schedule' | 'assessment' | 'materials'>('clo');
   const [allSyllabusData, setAllSyllabusData] = useState<Record<string, CourseSyllabusData>>({});
 
   // Course-level Edit & Action State
@@ -465,7 +464,7 @@ export const S5CLORenderer = forwardRef<S5RendererRef, S5CLORendererProps>(({
   }
 
   return (
-    <div className="flex h-[780px] border border-slate-200 rounded-lg overflow-hidden bg-white shadow-xs">
+    <div className="flex items-stretch w-full min-h-[500px] border border-slate-200 rounded-lg bg-white shadow-xs">
       <S5CourseSidebar
         courses={courses}
         selectedCourseId={selectedCourseId}
@@ -488,55 +487,53 @@ export const S5CLORenderer = forwardRef<S5RendererRef, S5CLORendererProps>(({
         allSyllabusStatuses={allStatuses}
       />
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-        <S5HeaderMeta
-          data={currentSyllabus}
-          isEditing={isCurrentCourseEditing}
-          isSaving={isSavingCourse}
-          canEditRole={canEditRole && !readonly}
-          canApproveRole={canApproveRole}
-          onStartEdit={handleStartEdit}
-          onCancelEdit={handleCancelEdit}
-          onSave={handleSaveCourse}
-          onSubmitReview={handleSubmitReviewCourse}
-          onRecallReview={handleRecallReviewCourse}
-          onRejectCourse={() => {
-            setRejectNote(currentSyllabus.reviewNote || '');
-            setIsRejectModalOpen(true);
-          }}
-          onApproveCourse={handleApproveCourse}
-          onReopenCourse={handleReopenCourse}
-        />
-
-        <div className="border-b border-slate-200 px-4 bg-white shrink-0">
-          <Tabs
-            activeKey={activeTab}
-            onChange={k => setActiveTab(k as any)}
-            className="text-xs"
-            items={[
-              { key: 'info', label: <span className="flex items-center gap-1.5"><BookOpen size={13} /> 1. Thông tin & Mục tiêu (CO)</span> },
-              { key: 'clo', label: <span className="flex items-center gap-1.5"><Award size={13} /> 2. Chuẩn đầu ra (CLO)</span> },
-              { key: 'schedule', label: <span className="flex items-center gap-1.5"><Calendar size={13} /> 3. Kế hoạch 15 tuần</span> },
-              { key: 'assessment', label: <span className="flex items-center gap-1.5"><CheckSquare size={13} /> 4. Phương pháp đánh giá</span> },
-              { key: 'materials', label: <span className="flex items-center gap-1.5"><Library size={13} /> 5. Giáo trình & Học liệu</span> },
-            ]}
+      <div className="flex-1 min-w-0 flex flex-col bg-white rounded-r-lg">
+        <div className="sticky top-16 z-20 bg-white shadow-2xs rounded-tr-lg">
+          <S5HeaderMeta
+            data={currentSyllabus}
+            isEditing={isCurrentCourseEditing}
+            isSaving={isSavingCourse}
+            canEditRole={canEditRole && !readonly}
+            canApproveRole={canApproveRole}
+            onStartEdit={handleStartEdit}
+            onCancelEdit={handleCancelEdit}
+            onSave={handleSaveCourse}
+            onSubmitReview={handleSubmitReviewCourse}
+            onRecallReview={handleRecallReviewCourse}
+            onRejectCourse={() => {
+              setRejectNote(currentSyllabus.reviewNote || '');
+              setIsRejectModalOpen(true);
+            }}
+            onApproveCourse={handleApproveCourse}
+            onReopenCourse={handleReopenCourse}
           />
+
+          <div className="border-b border-slate-200 px-4 bg-white shrink-0">
+            <Tabs
+              activeKey={activeTab}
+              onChange={k => setActiveTab(k as any)}
+              className="text-xs !mb-0"
+              items={[
+                { key: 'clo', label: <span className="flex items-center gap-1.5"><Award size={13} /> 1. Mục tiêu &amp; Chuẩn đầu ra (CO - CLO)</span> },
+                { key: 'schedule', label: <span className="flex items-center gap-1.5"><Calendar size={13} /> 2. Kế hoạch 15 tuần</span> },
+                { key: 'assessment', label: <span className="flex items-center gap-1.5"><CheckSquare size={13} /> 3. Phương pháp đánh giá</span> },
+                { key: 'materials', label: <span className="flex items-center gap-1.5"><Library size={13} /> 4. Giáo trình &amp; Học liệu</span> },
+              ]}
+            />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {activeTab === 'info' && (
-            <S5TabGeneral
-              data={currentSyllabus}
-              readonly={isTabsReadonly}
-              onChange={handleUpdateCurrentSyllabus}
-            />
-          )}
+        <div className="min-w-0 w-full">
           {activeTab === 'clo' && (
-            <S5TabClos
+            <S5TabGeneralAndClos
               data={currentSyllabus}
               readonly={isTabsReadonly}
               availablePlos={availablePlos}
               ploDomains={ploDomains}
+              campaignMeta={{
+                'Tên CTĐT': campaign?.name,
+                'Khoa': campaign?.facultyName,
+              }}
               onChange={handleUpdateCurrentSyllabus}
             />
           )}

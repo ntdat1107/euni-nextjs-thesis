@@ -148,7 +148,7 @@ const PloItem = React.memo(function PloItem({
                 onClick={handleAddPiClick}
                 className="text-xs border-dashed border-emerald-400 text-emerald-700 hover:text-emerald-800 hover:border-emerald-600 rounded bg-emerald-50/30"
               >
-                + Thêm PI
+                Thêm PI
               </Button>
             </div>
           )}
@@ -245,7 +245,7 @@ export const PloSection = React.memo(function PloSection({
             onClick={onAddPlo}
             className="w-full text-brand-600 hover:text-brand-700 font-semibold border-brand-300 hover:border-brand-500 h-10 rounded-lg"
           >
-            + Thêm chuẩn đầu ra PLO
+            Thêm chuẩn đầu ra PLO
           </Button>
         )}
       </div>

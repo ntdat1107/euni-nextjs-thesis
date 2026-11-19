@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   KeyRound, Cpu, Plus, Trash2, CheckCircle2, XCircle, RefreshCw, 
   ExternalLink, Sparkles, ShieldCheck, Zap, Globe 
@@ -64,6 +64,57 @@ export default function AiSettingsSection() {
   const [savingModel, setSavingModel] = useState(false);
   const [modelForm] = Form.useForm();
   const selectedCredentialId = Form.useWatch('credentialId', modelForm);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [editingModelConfig, setEditingModelConfig] = useState<UserAiModelConfig | null>(null);
+
+  const loadModelsForCredential = async (credId?: number) => {
+    setLoadingModels(true);
+    try {
+      if (credId) {
+        const models = await userAiService.getAvailableModels(credId);
+        setAvailableModels(models && models.length > 0 ? models : []);
+      } else {
+        const models = await userAiService.getAvailableModelsByProvider('GEMINI');
+        setAvailableModels(models && models.length > 0 ? models : []);
+      }
+    } catch (err) {
+      console.warn('Lỗi khi tải danh sách models:', err);
+      const cred = credentials.find(c => c.id === credId);
+      const prov = cred?.provider || 'GEMINI';
+      setAvailableModels(PRESET_MODELS[prov] || PRESET_MODELS['GEMINI']);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isModelModalOpen) {
+      loadModelsForCredential(selectedCredentialId);
+    }
+  }, [isModelModalOpen, selectedCredentialId]);
+
+  const modelSelectOptions = useMemo((): { value: string; label: React.ReactNode }[] => {
+    if (availableModels.length > 0) {
+      return availableModels.map(m => ({
+        value: m,
+        label: (
+          <div className="flex items-center justify-between py-0.5">
+            <span className="font-medium text-slate-800">{m}</span>
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-mono">
+              Khả dụng
+            </span>
+          </div>
+        ),
+      }));
+    }
+    const cred = credentials.find(c => c.id === selectedCredentialId);
+    const prov = cred?.provider || 'GEMINI';
+    return (PRESET_MODELS[prov] || PRESET_MODELS['GEMINI']).map(m => ({
+      value: m,
+      label: `${m} (Đề xuất)`,
+    }));
+  }, [availableModels, credentials, selectedCredentialId]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -167,13 +218,28 @@ export default function AiSettingsSection() {
   };
 
   const openAddModelConfig = (initialTaskType?: string) => {
+    setEditingModelConfig(null);
     modelForm.resetFields();
     modelForm.setFieldsValue({
       taskType: initialTaskType || 'DEFAULT',
-      modelName: 'gemini-2.0-flash-lite',
+      modelName: 'gemini-2.0-flash',
       temperature: 0.5,
       maxTokens: 4096,
       active: true,
+    });
+    setIsModelModalOpen(true);
+  };
+
+  const openEditModelConfig = (config: UserAiModelConfig) => {
+    setEditingModelConfig(config);
+    modelForm.resetFields();
+    modelForm.setFieldsValue({
+      taskType: config.taskType,
+      credentialId: config.credentialId,
+      modelName: config.modelName,
+      temperature: config.temperature ?? 0.5,
+      maxTokens: config.maxTokens ?? 4096,
+      active: config.active,
     });
     setIsModelModalOpen(true);
   };
@@ -289,14 +355,18 @@ export default function AiSettingsSection() {
       title: 'Hành động',
       key: 'action',
       render: (_: any, record: UserAiModelConfig) => (
-        <Popconfirm
-          title="Xóa cấu hình mô hình này?"
-          onConfirm={() => handleDeleteModelConfig(record.id)}
-          okText="Xóa"
-          cancelText="Hủy"
-        >
-          <Button size="small" type="text" danger icon={<Trash2 className="w-3.5 h-3.5" />} />
-        </Popconfirm>
+        <Space size="small">
+          <Button size="small" onClick={() => openEditModelConfig(record)}>Sửa</Button>
+          <Popconfirm
+            title="Xóa cấu hình mô hình này?"
+            onConfirm={() => handleDeleteModelConfig(record.id)}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button size="small" type="text" danger icon={<Trash2 className="w-3.5 h-3.5" />} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -463,7 +533,7 @@ export default function AiSettingsSection() {
         title={
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-blue-600" />
-            <span className="font-bold">Cấu hình mô hình cho tác vụ</span>
+            <span className="font-bold">{editingModelConfig ? 'Chỉnh sửa cấu hình mô hình' : 'Cấu hình mô hình cho tác vụ'}</span>
           </div>
         }
         open={isModelModalOpen}
@@ -487,20 +557,33 @@ export default function AiSettingsSection() {
             />
           </Form.Item>
 
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-semibold text-slate-700">
+              Tên Mô hình (Model Name) <span className="text-rose-500">*</span>
+            </span>
+            <Button
+              type="link"
+              size="small"
+              className="p-0 h-auto text-xs text-blue-600 flex items-center gap-1 font-medium"
+              onClick={() => loadModelsForCredential(selectedCredentialId)}
+              disabled={loadingModels}
+            >
+              <RefreshCw className={`w-3 h-3 ${loadingModels ? 'animate-spin' : ''}`} />
+              Làm mới danh sách
+            </Button>
+          </div>
+
           <Form.Item 
             name="modelName" 
-            label="Tên Mô hình (Model Name)" 
             rules={[{ required: true, message: 'Vui lòng chọn hoặc nhập tên mô hình' }]}
+            className="mb-4"
           >
             <Select 
               showSearch 
               allowClear
-              placeholder="Chọn mô hình đề xuất hoặc nhập tên"
-              options={[
-                ...PRESET_MODELS['GEMINI'].map(m => ({ value: m, label: `${m} (Google)` })),
-                ...PRESET_MODELS['OPENAI'].map(m => ({ value: m, label: `${m} (OpenAI)` })),
-                ...PRESET_MODELS['DEEPSEEK'].map(m => ({ value: m, label: `${m} (DeepSeek)` })),
-              ]}
+              loading={loadingModels}
+              placeholder={loadingModels ? "Đang tải danh sách mô hình từ API..." : "Chọn mô hình khả dụng hoặc nhập tên"}
+              options={modelSelectOptions}
             />
           </Form.Item>
 

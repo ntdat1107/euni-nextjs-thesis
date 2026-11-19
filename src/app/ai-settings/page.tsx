@@ -40,7 +40,7 @@ export default function AiSettingsPage() {
   const [credentials, setCredentials] = useState<UserAiCredential[]>([]);
   const [modelConfigs, setModelConfigs] = useState<UserAiModelConfig[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'providers' | 'tasks' | 'params'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'tasks'>('providers');
 
   // Key Modal State
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
@@ -52,6 +52,25 @@ export default function AiSettingsPage() {
   // Connection testing state (per provider)
   const [testingProviders, setTestingProviders] = useState<Record<string, boolean>>({});
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; msg: string; latency?: number }>>({});
+
+  // Dynamic discovered models per provider (checked via API key)
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
+  const [loadingModelsByProvider, setLoadingModelsByProvider] = useState<Record<string, boolean>>({});
+
+  const fetchProviderModels = async (provider: AiProvider, credentialId?: number) => {
+    if (!credentialId) return;
+    setLoadingModelsByProvider(prev => ({ ...prev, [provider]: true }));
+    try {
+      const models = await userAiService.getAvailableModels(credentialId);
+      if (models && models.length > 0) {
+        setDiscoveredModels(prev => ({ ...prev, [provider]: models }));
+      }
+    } catch (err: any) {
+      console.warn(`Lỗi khi kiểm tra mô hình cho ${provider}:`, err);
+    } finally {
+      setLoadingModelsByProvider(prev => ({ ...prev, [provider]: false }));
+    }
+  };
 
   // Model Assignment Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -79,6 +98,25 @@ export default function AiSettingsPage() {
       if (defaultConfig) {
         if (defaultConfig.temperature !== undefined) setGlobalTemperature(defaultConfig.temperature);
         if (defaultConfig.maxTokens !== undefined) setGlobalMaxTokens(defaultConfig.maxTokens);
+      }
+
+      // Tự động kiểm tra danh sách mô hình khả dụng cho các key đang hoạt động
+      if (creds && creds.length > 0) {
+        creds.forEach(c => {
+          if (c.active && c.provider) {
+            setLoadingModelsByProvider(prev => ({ ...prev, [c.provider]: true }));
+            userAiService.getAvailableModels(c.id)
+              .then(list => {
+                if (list && list.length > 0) {
+                  setDiscoveredModels(prev => ({ ...prev, [c.provider]: list }));
+                }
+              })
+              .catch(e => console.warn(`Kiểm tra mô hình ${c.provider} lỗi:`, e))
+              .finally(() => {
+                setLoadingModelsByProvider(prev => ({ ...prev, [c.provider]: false }));
+              });
+          }
+        });
       }
     } catch (err: any) {
       console.error('Failed to load AI settings:', err);
@@ -142,15 +180,20 @@ export default function AiSettingsPage() {
   const handleSaveCredential = async (values: any) => {
     setSavingCred(true);
     try {
+      let targetCredId = editingCred?.id;
       if (editingCred) {
         await userAiService.updateCredential(editingCred.id, values);
         message.success(`Đã cập nhật API Key cho ${values.provider}`);
       } else {
-        await userAiService.createCredential(values);
+        const created = await userAiService.createCredential(values);
         message.success(`Đã lưu API Key cho ${values.provider}`);
+        targetCredId = created?.id;
       }
       setIsKeyModalOpen(false);
       fetchData();
+      if (targetCredId) {
+        fetchProviderModels(values.provider, targetCredId);
+      }
     } catch (err: any) {
       message.error(err.message || 'Không thể lưu API Key');
     } finally {
@@ -162,6 +205,11 @@ export default function AiSettingsPage() {
     try {
       await userAiService.deleteCredential(id);
       message.success(`Đã xóa API Key của ${providerName}`);
+      setDiscoveredModels(prev => {
+        const next = { ...prev };
+        delete next[providerName];
+        return next;
+      });
       fetchData();
     } catch (err: any) {
       message.error(err.message || 'Lỗi khi xóa API Key');
@@ -183,8 +231,14 @@ export default function AiSettingsPage() {
           latency: res.latencyMs,
         },
       }));
+      if (res.availableModels && res.availableModels.length > 0) {
+        setDiscoveredModels(prev => ({
+          ...prev,
+          [provider]: res.availableModels || [],
+        }));
+      }
       if (res.success) {
-        message.success(`Kết nối ${provider} thành công (${res.latencyMs || 0}ms)`);
+        message.success(`Kết nối ${provider} thành công (${res.latencyMs || 0}ms)` + (res.availableModels?.length ? ` - ${res.availableModels.length} mô hình khả dụng` : ''));
       } else {
         message.error(res.message || `Kết nối ${provider} thất bại`);
       }
@@ -275,9 +329,19 @@ export default function AiSettingsPage() {
   // Available models for currently selected provider in Task Modal
   const availableModelsForSelectedProvider = useMemo(() => {
     if (!selectedTaskProvider) return [];
+    const dynamicList = discoveredModels[selectedTaskProvider];
+    if (dynamicList && dynamicList.length > 0) {
+      return dynamicList.map(id => ({
+        id,
+        name: id,
+        description: 'Mô hình khả dụng đã xác thực từ API Key cá nhân',
+        badge: 'Khả dụng',
+        badgeType: 'new' as const,
+      }));
+    }
     const catalog = AI_PROVIDERS_CATALOG[selectedTaskProvider as AiProvider];
     return catalog?.models || [];
-  }, [selectedTaskProvider]);
+  }, [selectedTaskProvider, discoveredModels]);
 
   return (
     <AppShell>
@@ -287,7 +351,7 @@ export default function AiSettingsPage() {
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <Link href="/" className="hover:text-edu-primary transition-colors">Trang chủ</Link>
           <span>/</span>
-          <span className="text-slate-800 font-bold">Cấu hình AI cá nhân (BYOK)</span>
+          <span className="text-slate-800 font-bold">Cấu hình AI cá nhân</span>
         </div>
 
         {/* 2. Header Card (Standard Container Architecture) */}
@@ -298,7 +362,7 @@ export default function AiSettingsPage() {
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <Title level={3} className="!mb-0 !text-slate-900 font-display">Cấu hình AI Cá nhân (BYOK)</Title>
+                <Title level={3} className="!mb-0 !text-slate-900 font-display">Cấu hình AI Cá nhân</Title>
                 {hasAnyActiveKey ? (
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -358,20 +422,6 @@ export default function AiSettingsPage() {
             <Cpu className="w-4 h-4 text-violet-600" />
             Mô hình theo Tác vụ ({AI_TASK_DEFINITIONS.length})
           </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('params')}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200",
-              activeTab === 'params' 
-                ? "bg-white text-slate-900 shadow-sm" 
-                : "text-slate-600 hover:text-slate-900"
-            )}
-          >
-            <Sliders className="w-4 h-4 text-emerald-600" />
-            Tham số tạo sinh
-          </button>
         </div>
 
         {/* 4. Tab 1: AI Provider Cards Grid */}
@@ -384,6 +434,8 @@ export default function AiSettingsPage() {
               const isActive = cred?.active ?? false;
               const testResult = testResults[provKey];
               const isTesting = testingProviders[provKey] || false;
+              const modelsList = discoveredModels[provKey] || [];
+              const isLoadingModels = loadingModelsByProvider[provKey] || false;
 
               return (
                 <div
@@ -465,32 +517,66 @@ export default function AiSettingsPage() {
                       )}
                     </div>
 
-                    {/* Supported Models Badges List */}
+                    {/* Discovered Models Badges List */}
                     <div className="space-y-1.5 mb-5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Các mô hình sẵn có:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {meta.models.map((mod) => (
-                          <div
-                            key={mod.id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-slate-100 text-slate-700 border border-slate-200/80"
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Các mô hình khả dụng {isConfigured && modelsList.length > 0 ? `(${modelsList.length})` : ''}:
+                        </span>
+                        {isConfigured && (
+                          <button
+                            type="button"
+                            onClick={() => fetchProviderModels(provKey, cred?.id)}
+                            disabled={isLoadingModels}
+                            className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            title="Kiểm tra lại danh sách mô hình từ API"
                           >
-                            <span>{mod.id}</span>
-                            {mod.badge && (
-                              <span className={cn(
-                                "text-[9px] px-1 py-0 rounded font-sans font-bold uppercase",
-                                mod.badgeType === 'recommend' && "bg-blue-100 text-blue-700",
-                                mod.badgeType === 'new' && "bg-emerald-100 text-emerald-700",
-                                mod.badgeType === 'reason' && "bg-purple-100 text-purple-700",
-                                mod.badgeType === 'fast' && "bg-amber-100 text-amber-800"
-                              )}>
-                                {mod.badge}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                            <RefreshCw className={cn("w-2.5 h-2.5", isLoadingModels && "animate-spin")} />
+                            <span>{isLoadingModels ? 'Đang kiểm tra...' : 'Kiểm tra mô hình'}</span>
+                          </button>
+                        )}
                       </div>
+
+                      {!isConfigured ? (
+                        <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                          <span className="text-[11px] text-slate-400 italic">
+                            Chưa có API Key — Thêm khóa API để kiểm tra các mô hình khả dụng
+                          </span>
+                        </div>
+                      ) : isLoadingModels ? (
+                        <div className="py-3 px-3 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-center gap-2 text-xs text-slate-500">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                          <span>Đang kiểm tra mô hình từ API...</span>
+                        </div>
+                      ) : modelsList.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                          {modelsList.map((modelId) => (
+                            <div
+                              key={modelId}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs"
+                            >
+                              <span>{modelId}</span>
+                              <span className="text-[8px] px-1 py-0 rounded font-sans font-bold uppercase bg-emerald-100 text-emerald-700">
+                                Khả dụng
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-2.5 px-3 rounded-xl bg-amber-50/60 border border-amber-200/60 flex items-center justify-between gap-2">
+                          <span className="text-xs text-amber-700">
+                            Chưa quét được mô hình từ API.
+                          </span>
+                          <Button
+                            size="small"
+                            type="link"
+                            className="p-0 h-auto text-xs font-semibold text-blue-600"
+                            onClick={() => fetchProviderModels(provKey, cred?.id)}
+                          >
+                            Kiểm tra ngay
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -561,8 +647,6 @@ export default function AiSettingsPage() {
             <div className="divide-y divide-slate-100">
               {AI_TASK_DEFINITIONS.map((task) => {
                 const assigned = configsByTask[task.type];
-                const activeModelName = assigned?.modelName || task.recommendedModelId;
-                const activeProvider = assigned?.provider || task.recommendedProvider;
                 const isCustomized = !!assigned;
 
                 return (
@@ -586,28 +670,39 @@ export default function AiSettingsPage() {
                     </div>
 
                     <div className="flex items-center gap-3 self-end md:self-center">
-                      <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                        <div className="w-6 h-6 flex items-center justify-center">
-                          {getProviderIcon(activeProvider, 18)}
+                      {isCustomized ? (
+                        <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                          <div className="w-6 h-6 flex items-center justify-center">
+                            {getProviderIcon(assigned.provider, 18)}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-mono font-bold text-slate-800">
+                              {assigned.modelName}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Đã cấu hình
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-mono font-bold text-slate-800">
-                            {activeModelName}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {isCustomized ? 'Tùy biến cá nhân' : 'Đề xuất hệ thống'}
-                          </span>
+                      ) : (
+                        <div className="px-3 py-1 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-slate-400 text-xs italic">
+                          Chưa cấu hình
                         </div>
-                      </div>
+                      )}
 
                       <Button
-                        type="default"
+                        type={isCustomized ? "default" : "primary"}
                         size="small"
-                        icon={<Settings2 className="w-3.5 h-3.5 text-slate-500" />}
+                        icon={<Settings2 className="w-3.5 h-3.5" />}
                         onClick={() => handleOpenTaskModal(task.type)}
-                        className="rounded-lg h-8 text-xs font-semibold border-slate-200 hover:border-blue-500 hover:text-blue-600"
+                        className={cn(
+                          "rounded-lg h-8 text-xs font-semibold",
+                          isCustomized 
+                            ? "border-slate-200 hover:border-blue-500 hover:text-blue-600" 
+                            : "bg-edu-primary hover:bg-blue-700 border-none text-white"
+                        )}
                       >
-                        Đổi mô hình
+                        {isCustomized ? 'Đổi mô hình' : 'Gán mô hình'}
                       </Button>
                     </div>
                   </div>
@@ -617,69 +712,7 @@ export default function AiSettingsPage() {
           </div>
         )}
 
-        {/* 6. Tab 3: Generation Parameters */}
-        {activeTab === 'params' && (
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 max-w-2xl">
-            <h3 className="font-bold text-slate-900 text-base mb-1">Tham số tạo sinh mặc định</h3>
-            <p className="text-xs text-slate-500 mb-6">
-              Điều chỉnh mức độ sáng tạo và độ dài tối đa của văn bản phản hồi do AI sinh ra
-            </p>
 
-            <div className="space-y-6">
-              {/* Temperature Slider */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Nhiệt độ sáng tạo (Temperature): {globalTemperature}
-                  </label>
-                  <span className="text-xs text-slate-500">
-                    {globalTemperature <= 0.3 ? 'Rất chặt chẽ, chính xác' : globalTemperature <= 0.7 ? 'Cân bằng, tự nhiên' : 'Rất sáng tạo, đa dạng'}
-                  </span>
-                </div>
-                <Slider
-                  min={0.0}
-                  max={1.0}
-                  step={0.1}
-                  value={globalTemperature}
-                  onChange={(val) => setGlobalTemperature(val)}
-                />
-                <div className="flex justify-between text-[11px] text-slate-400">
-                  <span>0.0 (Chính xác nhất)</span>
-                  <span>0.5 (Khuyên dùng)</span>
-                  <span>1.0 (Sáng tạo tối đa)</span>
-                </div>
-              </div>
-
-              {/* Max Tokens Select */}
-              <div className="space-y-2 pt-2">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  Giới hạn số token đầu ra (Max Tokens)
-                </label>
-                <Select
-                  value={globalMaxTokens}
-                  onChange={(val) => setGlobalMaxTokens(val)}
-                  className="w-full h-10"
-                  options={[
-                    { value: 2048, label: '2,048 tokens (~1,500 từ) - Nhanh gọn' },
-                    { value: 4096, label: '4,096 tokens (~3,000 từ) - Chuẩn cho đề cương' },
-                    { value: 8192, label: '8,192 tokens (~6,000 từ) - Tài liệu dài' },
-                  ]}
-                />
-              </div>
-
-              <div className="pt-4 flex justify-end">
-                <Button
-                  type="primary"
-                  loading={savingParams}
-                  onClick={handleSaveGlobalParams}
-                  className="bg-edu-primary hover:bg-blue-700 rounded-lg h-9 font-semibold text-xs border-none px-5"
-                >
-                  Lưu thiết lập tham số
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
 
@@ -833,7 +866,7 @@ export default function AiSettingsPage() {
           </Form.Item>
 
           <div className="grid grid-cols-2 gap-4">
-            <Form.Item name="temperature" label="Nhiệt độ (0.0 - 1.0)">
+            <Form.Item name="temperature" label="Nhiệt độ sáng tạo">
               <Select options={[
                 { value: 0.2, label: '0.2 - Chặt chẽ' },
                 { value: 0.5, label: '0.5 - Chuẩn' },
